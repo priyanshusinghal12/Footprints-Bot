@@ -90,7 +90,7 @@ const ChatBot = () => {
 		setIsBotTyping(true);
 
 		try {
-			const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/chat`, {
+			const res = await fetch("https://footprints-bot.onrender.com/chat", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ message: input }),

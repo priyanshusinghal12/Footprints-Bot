@@ -10,11 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@coreui/icons": "^3.0.1",
+    "@coreui/icons-react": "^2.3.0",
     "@headlessui/react": "^2.2.0",
     "@tailwindcss/vite": "^4.0.15",
     "bad-words": "^4.0.0",
     "emailjs-com": "^3.2.0",
+    "emoji-picker-react": "^4.12.2",
     "firebase": "^11.6.0",
+    "framer-motion": "^12.16.0",
     "lucide-react": "^0.487.0",
     "motion": "^12.5.0",
     "particles.js": "^2.0.0",

@@ -6,22 +6,23 @@ from bot import FootprintsBot
 app = FastAPI()
 bot = FootprintsBot()
 
-# Define request schema
-class ChatRequest(BaseModel):
-    message: str
-
-# Enable CORS for frontend access
+# Allow frontend requests from localhost
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with actual domain in prod
+    allow_origins=["http://localhost:5173"],  # Update if you're using a different port
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Define /chat POST endpoint
+class ChatRequest(BaseModel):
+    message: str
+
+@app.get("/")
+async def root():
+    return {"message": "Footprints backend is running!"}
+
 @app.post("/chat")
-async def chat(req: ChatRequest):
-    user_input = req.message
-    response = bot.handle_message(user_input)
-    return {"response": response}
+async def chat_endpoint(request: ChatRequest):
+    reply = bot.handle_message(request.message)
+    return {"response": reply}

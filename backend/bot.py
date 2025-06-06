@@ -554,6 +554,7 @@ if __name__ == "__main__":
     print("\nArjun:", first_question)
 
     bot = FootprintsBot()
+    print("🔁 BOT RELOADED")
 
     while True:
         user_input = input("\nYou: ")

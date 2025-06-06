@@ -181,9 +181,9 @@ const ChatBot = () => {
 				{isBotTyping && (
 					<div className="flex items-start space-x-2">
 						<img
-							src={avatar}
-							alt="Logo"
-							className="h-20 w-20 object-contain rounded-full bg-white p-1 shadow"
+							src={logo} // ✅ switch to mascot/logo image
+							alt="Bot"
+							className="w-8 h-8 rounded-full object-cover mr-2 self-end" // ✅ resize to match normal messages
 						/>
 						<div className="bg-cyan-100 text-gray-800 px-4 py-2 rounded-xl text-sm animate-pulse">
 							Arjun is typing...

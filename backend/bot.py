@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from typing import Optional, Dict, List
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 @dataclass
 class UserState:
@@ -31,7 +35,11 @@ class UserState:
 
 class FootprintsBot:
     def __init__(self):
-        self.llm = ChatOpenAI(temperature=0.3, model="gpt-4")
+        self.llm = ChatOpenAI(
+            temperature=0.3,
+            model="gpt-3.5-turbo",
+            openai_api_key=os.getenv("OPENAI_API_KEY")
+        )
         with open("centers.json", "r") as f:
             self.centers = json.load(f)
 
@@ -60,16 +68,13 @@ class FootprintsBot:
         name_lower = name.strip().lower()
         forbidden = {
             "ok", "no", "yes", "test", "thanks", "thank you", "hello", "hi", "bye", "goodbye",
-            "none", "parent", "child", "please", "help", "sure", "fine", "alright", "cool", "fuck",""
+            "none", "parent", "child", "please", "help", "sure", "fine", "alright", "cool", "fuck", ""
         }
         if name_lower in forbidden:
             return False
-        # Only allow alphabetic names with optional hyphen/apostrophe/spaces
         if not re.match(r"^[a-zA-Z][a-zA-Z\s\-']+$", name):
             return False
         return True
-    
-    #no change
 
     def extract_information(self, user_input: str) -> Dict:
         city_list = list(self.centers.keys())
@@ -79,75 +84,59 @@ class FootprintsBot:
         program_list = ["Pre-School", "Full Day Care", "Daycare", "After School"]
 
         prompt = f"""
-    Extract as much information as possible from the following message for a preschool inquiry. 
-    Only output a valid JSON object as described below. Do not include any explanation or extra text.
+Extract as much information as possible from the following message for a preschool inquiry. 
+Only output a valid JSON object as described below. Do not include any explanation or extra text.
 
-    Message: "{user_input}"
+Message: "{user_input}"
 
-    Rules:
-    - Only extract 'child_name' if it is a real human name (not a conversational phrase or random word).
-    - For program, city, and locality, correct typos using the valid lists below.
+Rules:
+- Only extract 'child_name' if it is a real human name (not a conversational phrase or random word).
+- For program, city, and locality, correct typos using the valid lists below.
 
-    Valid cities: {', '.join(city_list)}
-    Valid localities: {', '.join(all_localities)}
-    Valid programs: {', '.join(program_list)}
+Valid cities: {', '.join(city_list)}
+Valid localities: {', '.join(all_localities)}
+Valid programs: {', '.join(program_list)}
 
-    JSON format:
-    {{
-    "child_name": null or string (only if real name),
-    "child_age": null or integer,
-    "program": null or one of {program_list},
-    "city": null or one of {city_list},
-    "locality": null or one of the localities above,
-    "phone_number": null or string,
-    "new_locality": null or one of the localities above,
-    "intent": null or one of ["schedule_visit", "change_locality", "faq", "provide_info", "none"],
-    "faq_topics": list of strings (e.g. ["safety", "meals"])
-    }}
+JSON format:
+{{
+"child_name": null or string (only if real name),
+"child_age": null or integer,
+"program": null or one of {program_list},
+"city": null or one of {city_list},
+"locality": null or one of the localities above,
+"phone_number": null or string,
+"new_locality": null or one of the localities above,
+"intent": null or one of ["schedule_visit", "change_locality", "faq", "provide_info", "none"],
+"faq_topics": list of strings (e.g. ["safety", "meals"])
+}}
 
-    Only output the JSON object.
-    """
+Only output the JSON object.
+"""
         try:
             response = self.llm.invoke([HumanMessage(content=prompt)])
-            info = json.loads(response.content)
-            return info
+            return json.loads(response.content)
         except Exception as e:
             print("EXTRACTION ERROR:", e)
+            if "model" in str(e).lower() and "not found" in str(e).lower():
+                return {"error": "model_not_found"}
             return {}
 
-
     def update_state(self, extracted: Dict):
-        if extracted.get("child_name") is not None:
-            name = extracted["child_name"].strip().title() if extracted["child_name"] else None
-            if name:
-                self.state.child_name = name
-        if extracted.get("child_age") is not None:
+        def clean(val): return val.strip().title() if val else None
+        if extracted.get("child_name"): self.state.child_name = clean(extracted["child_name"])
+        if extracted.get("child_age"):
             try:
                 self.state.child_age = int(extracted["child_age"])
                 if not self.state.program:
                     self.state.program = self._recommend_program()
-            except Exception:
-                pass
-        if extracted.get("program") is not None:
-            prog = extracted["program"].strip().title() if extracted["program"] else None
-            if prog:
-                self.state.program = prog
-        if extracted.get("city") is not None:
-            city = extracted["city"].strip().title() if extracted["city"] else None
-            if city:
-                self.state.city = city
-        if extracted.get("locality") is not None:
-            loc = extracted["locality"].strip().title() if extracted["locality"] else None
-            if loc:
-                self.state.locality = loc
-        if extracted.get("phone_number") is not None:
-            phone = extracted["phone_number"].strip() if extracted["phone_number"] else None
-            if phone:
-                self.state.phone_number = phone
+            except: pass
+        if extracted.get("program"): self.state.program = clean(extracted["program"])
+        if extracted.get("city"): self.state.city = clean(extracted["city"])
+        if extracted.get("locality"): self.state.locality = clean(extracted["locality"])
+        if extracted.get("phone_number"): self.state.phone_number = extracted["phone_number"].strip()
 
     def _recommend_program(self) -> str:
-        if not self.state.child_age:
-            return ""
+        if not self.state.child_age: return ""
         age = self.state.child_age
         if age < 1: return "Daycare"
         if 1 <= age < 4: return "Pre-School"
@@ -289,6 +278,10 @@ class FootprintsBot:
 
         # Use GPT to extract all possible info (including robust name detection)
         extracted = self.extract_information(user_input)
+        
+        if extracted.get("error") == "model_not_found":
+            return "I'm having trouble accessing my language model. Please try again later or contact support. 🛠️"
+
         self.update_state(extracted)
         missing = self.state.missing_info()
 
@@ -554,9 +547,10 @@ if __name__ == "__main__":
     print("\nArjun:", first_question)
 
     bot = FootprintsBot()
-    print("🔁 BOT RELOADED")
+    # print("🔁 BOT RELOADED")
 
     while True:
+        print("API KEY:", os.getenv("OPENAI_API_KEY"))
         user_input = input("\nYou: ")
         if user_input.lower() in ["exit", "bye"]:
             print("Thank you for chatting! Have a great day! 🌟")

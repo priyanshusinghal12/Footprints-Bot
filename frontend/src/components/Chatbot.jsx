@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Picker from "emoji-picker-react";
 import { motion } from "framer-motion";
 import avatar from "../assets/avatar.jpeg";
-import logo from "../assets/logo.svg";
+import logo from "../assets/logo.png";
 import { CIcon } from "@coreui/icons-react";
 import { cilMicrophone } from "@coreui/icons";
 
@@ -18,6 +18,14 @@ const ChatBot = () => {
 					},
 			  ];
 	});
+
+	const sessionId = useRef(() => {
+		const saved = localStorage.getItem("session-id");
+		if (saved) return saved;
+		const newId = crypto.randomUUID();
+		localStorage.setItem("session-id", newId);
+		return newId;
+	})();
 
 	const [input, setInput] = useState("");
 	const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -102,8 +110,9 @@ const ChatBot = () => {
 			const res = await fetch("https://footprints-bot.onrender.com/chat", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ message: input }),
+				body: JSON.stringify({ message: input, session_id: sessionId.current }),
 			});
+
 			const data = await res.json();
 
 			// Delay response slightly to simulate typing effect
@@ -127,9 +136,9 @@ const ChatBot = () => {
 			<div className="bg-[#00A9C1] text-white py-4 px-6 text-lg sm:text-xl font-bold flex items-center justify-between">
 				<div className="flex items-center gap-2">
 					<img
-						src={logo}
+						src={avatar}
 						alt="Logo"
-						className="h-8 w-8 object-contain rounded-full bg-white p-1 shadow"
+						className="h-5 w-5 object-contain rounded-full bg-white p-1 shadow"
 					/>
 					<span className="ml-2">Footprints Parent Assistant</span>
 				</div>
@@ -151,7 +160,7 @@ const ChatBot = () => {
 						className={`flex ${msg.from === "bot" ? "" : "justify-end"}`}>
 						{msg.from === "bot" && (
 							<img
-								src={avatar}
+								src={logo}
 								alt="Bot"
 								className="w-8 h-8 rounded-full object-cover mr-2 self-end"
 							/>
@@ -175,8 +184,8 @@ const ChatBot = () => {
 					<div className="flex items-start space-x-2">
 						<img
 							src={avatar}
-							alt="Bot"
-							className="w-8 h-8 rounded-full object-cover self-end"
+							alt="Logo"
+							className="h-20 w-20 object-contain rounded-full bg-white p-1 shadow"
 						/>
 						<div className="bg-cyan-100 text-gray-800 px-4 py-2 rounded-xl text-sm animate-pulse">
 							Arjun is typing...

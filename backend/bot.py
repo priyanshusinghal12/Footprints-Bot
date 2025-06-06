@@ -68,6 +68,8 @@ class FootprintsBot:
         if not re.match(r"^[a-zA-Z][a-zA-Z\s\-']+$", name):
             return False
         return True
+    
+    #no change
 
     def extract_information(self, user_input: str) -> Dict:
         city_list = list(self.centers.keys())

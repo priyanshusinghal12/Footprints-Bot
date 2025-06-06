@@ -136,7 +136,7 @@ const ChatBot = () => {
 					<img
 						src={avatar}
 						alt="Logo"
-						className="h-5 w-5 object-contain rounded-full bg-white p-1 shadow"
+						className="h-10 w-10 object-contain rounded-full bg-white p-1 shadow"
 					/>
 					<span className="ml-2">Footprints Parent Assistant</span>
 				</div>

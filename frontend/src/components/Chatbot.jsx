@@ -2,15 +2,11 @@ import React, { useState, useRef, useEffect } from "react";
 import Picker from "emoji-picker-react";
 import { motion } from "framer-motion";
 import avatar from "../assets/avatar.jpeg";
-import logo from "../assets/logo.png";
+import logo from "../assets/logo.svg";
 import { CIcon } from "@coreui/icons-react";
 import { cilMicrophone } from "@coreui/icons";
 
 const ChatBot = () => {
-	useEffect(() => {
-		localStorage.removeItem("chat-history"); // force fresh welcome
-	}, []);
-
 	const [messages, setMessages] = useState(() => {
 		const saved = localStorage.getItem("chat-history");
 		return saved
@@ -27,10 +23,17 @@ const ChatBot = () => {
 	const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 	const [isBotTyping, setIsBotTyping] = useState(false);
 	const [isListening, setIsListening] = useState(false);
+	const [inputDisabled, setInputDisabled] = useState(false);
 	const messagesEndRef = useRef(null);
 	const emojiRef = useRef();
 	const recognitionRef = useRef(null);
 
+	// Scroll to bottom on new message
+	useEffect(() => {
+		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	}, [messages]);
+
+	// Click-outside to close emoji
 	useEffect(() => {
 		const handleClickOutside = (event) => {
 			if (emojiRef.current && !emojiRef.current.contains(event.target)) {
@@ -41,14 +44,12 @@ const ChatBot = () => {
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
 
-	useEffect(() => {
-		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [messages]);
-
+	// Save chat history
 	useEffect(() => {
 		localStorage.setItem("chat-history", JSON.stringify(messages));
 	}, [messages]);
 
+	// Voice recognition setup
 	useEffect(() => {
 		if (!("webkitSpeechRecognition" in window)) return;
 		const recognition = new window.webkitSpeechRecognition();
@@ -71,14 +72,18 @@ const ChatBot = () => {
 		}
 	};
 
+	const handleEmojiClick = (emojiData) => {
+		setInput((prev) => prev + emojiData.emoji);
+	};
+
 	const clearChat = () => {
+		localStorage.removeItem("chat-history");
 		setMessages([
 			{
 				from: "bot",
 				text: "Hi! 👋 Welcome to Footprints Preschool. I’m Arjun, your assistant. May I know your child’s name? 👶",
 			},
 		]);
-		localStorage.removeItem("chat-history");
 	};
 
 	const sendMessage = async () => {
@@ -87,6 +92,10 @@ const ChatBot = () => {
 		setMessages((prev) => [...prev, userMsg]);
 		setInput("");
 		setShowEmojiPicker(false);
+		setInputDisabled(true);
+
+		// Delay before typing starts
+		await new Promise((r) => setTimeout(r, 2000));
 		setIsBotTyping(true);
 
 		try {
@@ -96,6 +105,10 @@ const ChatBot = () => {
 				body: JSON.stringify({ message: input }),
 			});
 			const data = await res.json();
+
+			// Delay response slightly to simulate typing effect
+			await new Promise((r) => setTimeout(r, 800));
+
 			setMessages((prev) => [...prev, { from: "bot", text: data.response }]);
 		} catch {
 			setMessages((prev) => [
@@ -104,17 +117,14 @@ const ChatBot = () => {
 			]);
 		} finally {
 			setIsBotTyping(false);
+			setInputDisabled(false);
 		}
 	};
 
-	const handleEmojiClick = (emojiData) => {
-		setInput((prev) => prev + emojiData.emoji);
-	};
-
 	return (
-		<div className="w-full max-w-2xl h-[90vh] mx-auto mt-8 flex flex-col rounded-2xl shadow-xl overflow-hidden border border-gray-200 bg-white relative">
+		<div className="w-full max-w-2xl h-screen sm:h-[90vh] mx-auto flex flex-col rounded-none sm:rounded-2xl shadow-xl overflow-hidden border border-gray-200 bg-white relative">
 			{/* Header */}
-			<div className="bg-[#00A9C1] text-white py-4 px-6 text-xl font-bold flex items-center justify-between gap-2">
+			<div className="bg-[#00A9C1] text-white py-4 px-6 text-lg sm:text-xl font-bold flex items-center justify-between">
 				<div className="flex items-center gap-2">
 					<img
 						src={logo}
@@ -125,7 +135,7 @@ const ChatBot = () => {
 				</div>
 				<button
 					onClick={clearChat}
-					className="text-sm bg-white text-[#00A9C1] border border-white hover:border-[#00A9C1] px-3 py-1 rounded-full transition">
+					className="text-xs sm:text-sm bg-white text-[#00A9C1] border border-white hover:border-[#00A9C1] px-3 py-1 rounded-full transition">
 					Clear Chat
 				</button>
 			</div>
@@ -160,6 +170,7 @@ const ChatBot = () => {
 						</div>
 					</motion.div>
 				))}
+
 				{isBotTyping && (
 					<div className="flex items-start space-x-2">
 						<img
@@ -172,6 +183,7 @@ const ChatBot = () => {
 						</div>
 					</div>
 				)}
+
 				<div ref={messagesEndRef} />
 			</div>
 
@@ -192,10 +204,13 @@ const ChatBot = () => {
 				<input
 					type="text"
 					value={input}
+					disabled={inputDisabled}
 					onChange={(e) => setInput(e.target.value)}
 					onKeyDown={(e) => e.key === "Enter" && sendMessage()}
 					placeholder="Type a message to Arjun..."
-					className="flex-grow border border-cyan-200 rounded-full px-4 py-2 focus:outline-none text-gray-700 placeholder-gray-400 mx-2"
+					className={`flex-grow border border-cyan-200 rounded-full px-4 py-2 focus:outline-none text-gray-700 placeholder-gray-400 mx-2 ${
+						inputDisabled ? "bg-gray-100 cursor-not-allowed" : ""
+					}`}
 				/>
 				{/* Mic */}
 				<button

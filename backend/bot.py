@@ -54,6 +54,21 @@ class FootprintsBot:
         self.chat_ended = False
         self.visit_scheduled = False
 
+    def is_valid_name(self, name: str) -> bool:
+        if not name or len(name) < 2:
+            return False
+        name_lower = name.strip().lower()
+        forbidden = {
+            "ok", "no", "yes", "test", "thanks", "thank you", "hello", "hi", "bye", "goodbye",
+            "none", "parent", "child", "please", "help", "sure", "fine", "alright", "cool", "fuck",""
+        }
+        if name_lower in forbidden:
+            return False
+        # Only allow alphabetic names with optional hyphen/apostrophe/spaces
+        if not re.match(r"^[a-zA-Z][a-zA-Z\s\-']+$", name):
+            return False
+        return True
+
     def extract_information(self, user_input: str) -> Dict:
         city_list = list(self.centers.keys())
         all_localities = []
@@ -62,40 +77,44 @@ class FootprintsBot:
         program_list = ["Pre-School", "Full Day Care", "Daycare", "After School"]
 
         prompt = f"""
-You are a smart assistant for Footprints Preschool. Extract as much information as possible from the message below, even if there are typos, synonyms, or conversational phrasing:
+    Extract as much information as possible from the following message for a preschool inquiry. 
+    Only output a valid JSON object as described below. Do not include any explanation or extra text.
 
-"{user_input}"
+    Message: "{user_input}"
 
-Normalize and correct all fields to the closest valid value from the provided lists, even if the user input contains typos or partial matches.
+    Rules:
+    - Only extract 'child_name' if it is a real human name (not a conversational phrase or random word).
+    - For program, city, and locality, correct typos using the valid lists below.
 
-Valid cities: {', '.join(city_list)}
-Valid localities: {', '.join(all_localities)}
-Valid programs: {', '.join(program_list)}
+    Valid cities: {', '.join(city_list)}
+    Valid localities: {', '.join(all_localities)}
+    Valid programs: {', '.join(program_list)}
 
-Return JSON with:
-- child_name: null or string
-- child_age: null or integer
-- program: null or one of {program_list}
-- city: null or one of {city_list}
-- locality: null or one of the localities listed above
-- phone_number: null or string
-- new_locality: null or one of the localities listed above (if user is asking to try/change/switch to a different locality)
-- intent: null or one of ["schedule_visit", "change_locality", "faq", "provide_info", "none"]
-- faq_topics: list of topics the user is asking about (e.g. ["safety", "meals", "curriculum", "why_footprints"])
+    JSON format:
+    {{
+    "child_name": null or string (only if real name),
+    "child_age": null or integer,
+    "program": null or one of {program_list},
+    "city": null or one of {city_list},
+    "locality": null or one of the localities above,
+    "phone_number": null or string,
+    "new_locality": null or one of the localities above,
+    "intent": null or one of ["schedule_visit", "change_locality", "faq", "provide_info", "none"],
+    "faq_topics": list of strings (e.g. ["safety", "meals"])
+    }}
 
-If the user input is ambiguous, pick the closest match by spelling or meaning. If nothing is close, leave the field null.
-"""
+    Only output the JSON object.
+    """
         try:
             response = self.llm.invoke([HumanMessage(content=prompt)])
             info = json.loads(response.content)
-            print("EXTRACTED:", info)  # Debug print
             return info
         except Exception as e:
             print("EXTRACTION ERROR:", e)
             return {}
 
+
     def update_state(self, extracted: Dict):
-        print("BEFORE UPDATE:", vars(self.state))  # Debug print
         if extracted.get("child_name") is not None:
             name = extracted["child_name"].strip().title() if extracted["child_name"] else None
             if name:
@@ -123,7 +142,6 @@ If the user input is ambiguous, pick the closest match by spelling or meaning. I
             phone = extracted["phone_number"].strip() if extracted["phone_number"] else None
             if phone:
                 self.state.phone_number = phone
-        print("AFTER UPDATE:", vars(self.state))  # Debug print
 
     def _recommend_program(self) -> str:
         if not self.state.child_age:
@@ -267,23 +285,10 @@ If the user input is ambiguous, pick the closest match by spelling or meaning. I
     def generate_response(self, user_input: str) -> str:
         self.user_message_count += 1
 
-        # Fallback: if name is missing and user just sends a short string, treat as name
-        if not self.state.child_name and user_input.strip() and len(user_input.strip().split()) <= 3:
-            self.state.child_name = user_input.strip().title()
-            ack = self.generate_name_acknowledgment(self.state.child_name)
-            prog_prompt = (
-                "Which program are you considering? We offer:\n"
-                "- Pre-School (9:00 AM to 12:30 PM)\n"
-                "- Full Day Care (Pre-School + Daycare, 9:00 AM to 6:30 PM)\n"
-                "- After School (3:30 PM to 6:30 PM)\n"
-                "All programs operate Monday to Friday at every center. 📚"
-            )
-            return f"{ack}\n{prog_prompt}"
-
+        # Use GPT to extract all possible info (including robust name detection)
         extracted = self.extract_information(user_input)
         self.update_state(extracted)
         missing = self.state.missing_info()
-        print("MISSING:", missing)  # Debug print
 
         # If name was just provided in this message, acknowledge it warmly and continue
         if "child's name" not in missing and extracted.get("child_name"):
@@ -301,12 +306,28 @@ If the user input is ambiguous, pick the closest match by spelling or meaning. I
                 )
                 return f"{ack}\n{prog_prompt}"
 
+        # If name is missing or invalid (GPT couldn't extract a plausible name)
         if "child's name" in missing:
-            return "May I know your child's name? 👶"
+            return (
+                "I didn't catch a valid name there. Could you please tell me your child's name? 👶"
+            )
+
+        valid_programs = [
+            "Pre-School", "Full Day Care", "Daycare", "After School"
+        ]
+        program_input = (extracted.get("program") or "").strip().lower()
+        valid_programs_lower = [p.lower() for p in valid_programs]
 
         if "program preference" in missing:
-            if self.state.child_age:
-                return f"Based on {self.state.child_name}'s age, our {self.state.program} program would be perfect! Should I proceed with this? 😊"
+            # If user gave an unclear/irrelevant answer, clarify
+            if user_input.strip() and (not program_input or program_input not in valid_programs_lower):
+                return (
+                    "I didn't quite understand that. Could you please clarify which program you want? These are the programs we offer:\n"
+                    "- Pre-School (9:00 AM to 12:30 PM)\n"
+                    "- Full Day Care (Pre-School + Daycare, 9:00 AM to 6:30 PM)\n"
+                    "- After School (3:30 PM to 6:30 PM)\n"
+                    "Please reply with the program name or number. 📚"
+                )
             return (
                 "Which program are you considering? We offer:\n"
                 "- Pre-School (9:00 AM to 12:30 PM)\n"
@@ -315,13 +336,18 @@ If the user input is ambiguous, pick the closest match by spelling or meaning. I
                 "All programs operate Monday to Friday at every center. 📚"
             )
 
+        # Robust city prompt
         if "city" in missing:
-            return "Which city are you located in? 🏙️"
+            return (
+                "I didn't quite get the city name. Could you please tell me which city you're located in? 🏙️"
+            )
 
-        # Always ask for locality/sector after city, unless already asked
+        # Robust locality/sector prompt
         if self.state.city and not self.state.locality and not self.locality_asked:
             self.locality_asked = True
-            return "Could you share your locality/sector? This helps me find the nearest center! 📍"
+            return (
+                "I didn't catch your locality or sector. Could you please share it? This helps me find the nearest center! 📍"
+            )
 
         # If user says "I don't know" or similar for locality, recommend random centers
         if (self.state.locality and re.search(r"\b(i don't know|idk|dont know|no idea|not sure)\b", self.state.locality, re.I)) and not self.centers_provided:
@@ -333,7 +359,12 @@ If the user input is ambiguous, pick the closest match by spelling or meaning. I
             self.centers_provided = True
             return self._handle_center_response()
 
-        return "How else can I assist you today? 😊"
+        # For any other unclear/irrelevant answer, clarify
+        return (
+            "I didn't quite understand that. Could you please rephrase or clarify your response? 😊"
+        )
+
+
 
     def _inject_fact(self) -> Optional[str]:
         if self.user_message_count % 3 == 0:

@@ -6,8 +6,7 @@ export default defineConfig({
 	plugins: [react(), tailwindcss()],
 	server: {
 		proxy: {
-			"/check-requirements": "http://127.0.0.1:8000",
-			"/parse-transcript": "http://127.0.0.1:8000",
+			"/chat": "http://127.0.0.1:8000",
 		},
 	},
 	build: {

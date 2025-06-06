@@ -4,3 +4,6 @@ pydantic
 langchain
 openai
 langchain-openai
+pymongo
+python-dotenv
+dnspython

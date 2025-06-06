@@ -19,13 +19,18 @@ const ChatBot = () => {
 			  ];
 	});
 
-	const sessionId = useRef(() => {
+	const sessionId = useRef(null);
+
+	useEffect(() => {
 		const saved = localStorage.getItem("session-id");
-		if (saved) return saved;
-		const newId = crypto.randomUUID();
-		localStorage.setItem("session-id", newId);
-		return newId;
-	})();
+		if (saved) {
+			sessionId.current = saved;
+		} else {
+			const newId = crypto.randomUUID();
+			localStorage.setItem("session-id", newId);
+			sessionId.current = newId;
+		}
+	}, []);
 
 	const [input, setInput] = useState("");
 	const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -36,12 +41,10 @@ const ChatBot = () => {
 	const emojiRef = useRef();
 	const recognitionRef = useRef(null);
 
-	// Scroll to bottom on new message
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 	}, [messages]);
 
-	// Click-outside to close emoji
 	useEffect(() => {
 		const handleClickOutside = (event) => {
 			if (emojiRef.current && !emojiRef.current.contains(event.target)) {
@@ -52,12 +55,10 @@ const ChatBot = () => {
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
 
-	// Save chat history
 	useEffect(() => {
 		localStorage.setItem("chat-history", JSON.stringify(messages));
 	}, [messages]);
 
-	// Voice recognition setup
 	useEffect(() => {
 		if (!("webkitSpeechRecognition" in window)) return;
 		const recognition = new window.webkitSpeechRecognition();
@@ -102,7 +103,6 @@ const ChatBot = () => {
 		setShowEmojiPicker(false);
 		setInputDisabled(true);
 
-		// Delay before typing starts
 		await new Promise((r) => setTimeout(r, 2000));
 		setIsBotTyping(true);
 
@@ -115,9 +115,7 @@ const ChatBot = () => {
 
 			const data = await res.json();
 
-			// Delay response slightly to simulate typing effect
 			await new Promise((r) => setTimeout(r, 800));
-
 			setMessages((prev) => [...prev, { from: "bot", text: data.response }]);
 		} catch {
 			setMessages((prev) => [
@@ -221,7 +219,6 @@ const ChatBot = () => {
 						inputDisabled ? "bg-gray-100 cursor-not-allowed" : ""
 					}`}
 				/>
-				{/* Mic */}
 				<button
 					onClick={startListening}
 					className={`px-2 ${
@@ -230,7 +227,6 @@ const ChatBot = () => {
 					title="Voice Input">
 					<CIcon icon={cilMicrophone} className="w-6 h-6" />
 				</button>
-				{/* Send */}
 				<button
 					onClick={sendMessage}
 					className="ml-2 p-2 rounded-full bg-[#00A9C1] hover:bg-[#008ba0] transition">

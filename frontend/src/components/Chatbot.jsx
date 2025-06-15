@@ -98,6 +98,7 @@ const ChatBot = () => {
 
 	const sendMessage = async () => {
 		if (!input.trim()) return;
+		const cleanedInput = input.trim();
 		const userMsg = { from: "user", text: input };
 		setMessages((prev) => [...prev, userMsg]);
 		setInput("");
@@ -111,7 +112,10 @@ const ChatBot = () => {
 			const res = await fetch("https://footprints-bot.onrender.com/chat", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ message: input, session_id: sessionId.current }),
+				body: JSON.stringify({
+					message: cleanedInput,
+					session_id: sessionId.current,
+				}),
 			});
 
 			const data = await res.json();
@@ -121,7 +125,10 @@ const ChatBot = () => {
 		} catch {
 			setMessages((prev) => [
 				...prev,
-				{ from: "bot", text: "Oops! Something went wrong." },
+				{
+					from: "bot",
+					text: "Oops! Something went wrong while connecting. Please try again later!",
+				},
 			]);
 		} finally {
 			setIsBotTyping(false);
@@ -171,7 +178,7 @@ const ChatBot = () => {
 									: "bg-[#00A9C1] text-white"
 							}`}>
 							{msg.text.split("\n").map((line, i) => (
-								<p key={i} className="mb-1">
+								<p key={i} className="mb-1 break-words">
 									{line.trim()}
 								</p>
 							))}

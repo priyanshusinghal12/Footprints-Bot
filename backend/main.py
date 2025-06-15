@@ -29,16 +29,15 @@ async def root():
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
-    user_input = request.message
-    session_id = request.session_id
+    try:
+        user_input = request.message
+        session_id = request.session_id
 
-    # Save user message
-    save_message("user", user_input, session_id)
+        save_message("user", user_input, session_id)
+        reply = bot.handle_message(user_input)
+        save_message("bot", reply, session_id)
 
-    # Get bot reply
-    reply = bot.handle_message(user_input)
+        return {"response": reply}
+    except Exception as e:
+        return {"response": "Something went wrong. Please try again later."}
 
-    # Save bot reply
-    save_message("bot", reply, session_id)
-
-    return {"response": reply}

@@ -21,6 +21,15 @@ class FootprintsBot:
         self.step = "name"
         self.fact_injected = 0
 
+        self.PROGRAMS = [
+            ("pre school", "Pre-School"),
+            ("preschool", "Pre-School"),
+            ("day care", "Full Day Care"),
+            ("full day care", "Full Day Care"),
+            ("after school", "After School"),
+            ("afterschool", "After School"),
+        ]
+
     def flatten_centers(self, center_dict):
         flat_list = []
         for city, localities in center_dict.items():
@@ -57,56 +66,43 @@ Instructions:
 - If input is not relevant, output "invalid".
 
 Examples:
-User: "Raj" → {"intent": "provide_name", "name": "Raj"}
-User: "Aarav" → {"intent": "provide_name", "name": "Aarav"}
-User: "My name is Meera" → {"intent": "provide_name", "name": "Meera"}
-User: "This is Kabir" → {"intent": "provide_name", "name": "Kabir"}
-User: "It’s Rhea" → {"intent": "provide_name", "name": "Rhea"}
-User: "My daughter's name is Anaya" → {"intent": "provide_name", "name": "Anaya"}
-User: "Priyanshu" → {"intent": "provide_name", "name": "Priyanshu"}
-User: "what's your name?" → {"intent": "invalid"}
-User: "hmm" → {"intent": "invalid"}
-User: "ok" → {"intent": "invalid"}
+User: "Raj" → {{"intent": "provide_name", "name": "Raj"}}
+User: "Aarav" → {{"intent": "provide_name", "name": "Aarav"}}
+User: "My name is Meera" → {{"intent": "provide_name", "name": "Meera"}}
+User: "This is Kabir" → {{"intent": "provide_name", "name": "Kabir"}}
+User: "It’s Rhea" → {{"intent": "provide_name", "name": "Rhea"}}
+User: "My daughter's name is Anaya" → {{"intent": "provide_name", "name": "Anaya"}}
+User: "Priyanshu" → {{"intent": "provide_name", "name": "Priyanshu"}}
+User: "what's your name?" → {{"intent": "invalid"}}
+User: "hmm" → {{"intent": "invalid"}}
+User: "ok" → {{"intent": "invalid"}}
 
-User: "I want full day care" → {"intent": "provide_program", "program": "Full Day Care"}
-User: "after school" → {"intent": "provide_program", "program": "After School"}
-User: "Pre-school please" → {"intent": "provide_program", "program": "Pre-School"}
-User: "preschool" → {"intent": "provide_program", "program": "Pre-School"}
-User: "daycare" → {"intent": "provide_program", "program": "Full Day Care"}
+User: "I want full day care" → {{"intent": "provide_program", "program": "Full Day Care"}}
+User: "after school" → {{"intent": "provide_program", "program": "After School"}}
+User: "Pre-school please" → {{"intent": "provide_program", "program": "Pre-School"}}
+User: "preschool" → {{"intent": "provide_program", "program": "Pre-School"}}
+User: "daycare" → {{"intent": "provide_program", "program": "Full Day Care"}}
 
-User: "Delhi" → {"intent": "provide_city", "city": "Delhi"}
-User: "Looking in Noida" → {"intent": "provide_city", "city": "Noida"}
-User: "Gurgaon" → {"intent": "provide_city", "city": "Gurgaon"}
-User: "Change city to Lucknow" → {"intent": "change_city", "city": "Lucknow"}
-User: "Can we do Aliganj Lucknow?" → {"intent": "change_city", "city": "Lucknow", "locality": "Aliganj"}
+User: "Delhi" → {{"intent": "provide_city", "city": "Delhi"}}
+User: "Looking in Noida" → {{"intent": "provide_city", "city": "Noida"}}
+User: "Gurgaon" → {{"intent": "provide_city", "city": "Gurgaon"}}
+User: "Change city to Lucknow" → {{"intent": "change_city", "city": "Lucknow"}}
+User: "Can we do Aliganj Lucknow?" → {{"intent": "change_city", "city": "Lucknow", "locality": "Aliganj"}}
 
-User: "sector 62" → {"intent": "provide_locality", "locality": "Sector 62"}
-User: "New Friends Colony" → {"intent": "provide_locality", "locality": "New Friends Colony"}
-User: "Change to NFC" → {"intent": "change_locality", "locality": "New Friends Colony"}
-User: "no, try sector 104" → {"intent": "change_locality", "locality": "Sector 104"}
+User: "sector 62" → {{"intent": "provide_locality", "locality": "Sector 62"}}
+User: "New Friends Colony" → {{"intent": "provide_locality", "locality": "New Friends Colony"}}
+User: "Change to NFC" → {{"intent": "change_locality", "locality": "New Friends Colony"}}
+User: "no, try sector 104" → {{"intent": "change_locality", "locality": "Sector 104"}}
 
-User: "Can we do sector 50?" → {"intent": "change_locality", "locality": "Sector 50"}
-User: "Actually, Noida sector 50 please" → {"intent": "change_locality", "locality": "Sector 50"}
-User: "I want sector 62" → {"intent": "change_locality", "locality": "Sector 62"}
+User: "what is the fee?" → {{"intent": "faq", "topic": "fee"}}
+User: "what's the curriculum?" → {{"intent": "faq", "topic": "curriculum"}}
 
-User: "what is the fee?" → {"intent": "faq", "topic": "fee"}
-User: "what's the curriculum?" → {"intent": "faq", "topic": "curriculum"}
-User: "do you provide meals?" → {"intent": "faq", "topic": "meals"}
-User: "how about safety?" → {"intent": "faq", "topic": "safety"}
-User: "what are the hours?" → {"intent": "faq", "topic": "operating hours"}
+User: "yes" → {{"intent": "schedule_visit"}}
+User: "schedule a visit" → {{"intent": "schedule_visit"}}
+User: "I'd like to come tomorrow" → {{"intent": "schedule_visit"}}
 
-User: "yes" → {"intent": "schedule_visit"}
-User: "schedule a visit" → {"intent": "schedule_visit"}
-User: "I'd like to come tomorrow" → {"intent": "schedule_visit"}
-
-User: "no thank you" → {"intent": "end_conversation"}
-User: "no, I'm good" → {"intent": "end_conversation"}
-User: "that's all" → {"intent": "end_conversation"}
-User: "bye" → {"intent": "end_conversation"}
-User: "nothing else" → {"intent": "end_conversation"}
-User: "exit" → {"intent": "end_conversation"}
-User: "stop" → {"intent": "end_conversation"}
-
+User: "no thank you" → {{"intent": "end_conversation"}}
+User: "bye" → {{"intent": "end_conversation"}}
 
 Respond ONLY in JSON with keys for each field relevant to the step, plus "intent".
 """
@@ -145,7 +141,7 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
 
     def normalize_program(self, text):
         text = text.lower().replace("-", " ").replace("_", " ")
-        for key, val in PROGRAMS:
+        for key, val in self.PROGRAMS:
             if key in text:
                 return val
         return None
@@ -174,8 +170,18 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
     def answer_faq(self, topic):
         for keyword, response in FAQ_ANSWERS.items():
             if keyword in topic.lower():
-                return f"{response}\n\nIs there anything else you'd like to know — like safety, curriculum, or fees?"
-        return "I'm not sure about that topic. You can ask me about meals, safety, curriculum, fees, and more!"
+                extra = ""
+                if self.fact_injected < 2:
+                    extra = f"\nBy the way, did you know? {self.random_fact()}"
+                    self.fact_injected += 1
+                return f"{response}{extra}\n\nIs there anything else I can help you with — like safety, curriculum, meals, or fees?"
+        
+        return (
+            "I'm not sure about that topic, but someone from our team will reach out to assist you shortly.\n"
+            "Is there anything else I can help you with — like safety, curriculum, meals, or fees?"
+        )
+
+
 
     def handle_message(self, user_input):
         faq_topic = self.ask_gpt(self.gpt_faq_prompt(user_input))
@@ -207,8 +213,14 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
             if "locality" in result:
                 self.collected["locality"] = result["locality"]
             self.step = "program" if "program" not in self.collected else "city"
-            return f"Thanks {self.collected['name']}! Which program are you interested in?"
-        
+            return (
+                f"Thanks {self.collected['name']}! Which program are you considering? We offer:\n"
+                "- Pre-School (9:00 AM to 12:30 PM)\n"
+                "- Full Day Care (Pre-School + Daycare, 9:00 AM to 6:30 PM)\n"
+                "- After School (3:30 PM to 6:30 PM)\n"
+                "All programs operate Monday to Friday at every center. 📚"
+            )
+
         if self.step == "program" and "program" in result:
             self.collected["program"] = self.normalize_program(result["program"])
             if "city" in result:
@@ -274,7 +286,7 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
 
         return "Let me know how I can help!"
 
-# Static data kept at bottom
+# Constants
 FOOTPRINTS_FACTS = [
     "Footprints was founded by an IIT Delhi alumnus and has 170+ centers across India.",
     "90% of brain development happens by age 6, so early years matter most.",
@@ -285,21 +297,22 @@ FOOTPRINTS_FACTS = [
     "Parents can pause services, request refunds, and move centers via our app.",
     "If you’re not satisfied, you can request a refund for a day's childcare fees.",
 ]
-
 FAQ_ANSWERS = {
-    "age range": "Our preschool welcomes children aged 12 months to 8 years.",
-    "operating hours": "We are open Monday to Friday, 9:00 AM to 6:30 PM. Early/late hours are available at select branches.",
-    "curriculum": "We follow the US-based HighScope Curriculum, which encourages social, emotional, and cognitive development through interactive activities.",
-    "teacher student ratio": "We maintain a 1:10 teacher-to-student ratio for personalized attention.",
-    "meals": "We provide healthy snacks and meals, and accommodate dietary restrictions as needed.",
-    "safety": "Footprints prioritizes safety with soft flooring, covered edges, all-women staff, and live CCTV feeds.",
-    "cctv": "Parents can watch their child anytime via live CCTV feed on their mobile.",
-    "payments": "We offer flexible payment, pause, and refund policies through our app.",
-    "development": "Children learn through hands-on experiences guided by qualified staff. Our curriculum emphasizes social and problem-solving skills.",
-    "updates": "Parents get regular updates via our app, including meals, activities, and nap times.",
-    "fee": "One-Time Charges: Admission Fee ₹16,000, Registration ₹7,000, Welcome Kit ₹7,500. Monthly Fee: Pre School ₹8,999, Daycare ₹15,999, After School ₹7,999.",
-    "refund": "We offer a satisfaction guarantee—refunds are available if you’re not satisfied.",
-    "pause": "You can pause services if needed—just speak to the center administration.",
-    "enroll": "Enroll by filling the admission form on our website or visiting your nearest center.",
-    "sibling discount": "Yes, we offer sibling benefits. Please ask at your local center.",
+    "age range": "We welcome little ones aged 12 months to 8 years — ensuring age-appropriate care and learning at every stage.",
+    "operating hours": "Our centers are open Monday to Friday, from 9:00 AM to 6:30 PM. Some branches even offer early drop-offs or late pick-ups for added flexibility.",
+    "curriculum": "We follow the US-based HighScope Curriculum — a research-backed approach that encourages children to explore, experiment, and learn through engaging, hands-on activities.",
+    "teacher student ratio": "To give each child the attention they deserve, we maintain a low teacher-to-student ratio of 1:10.",
+    "meals": "Yes! We provide healthy, freshly prepared meals and snacks — and we’re happy to accommodate dietary preferences or restrictions.",
+    "safety": "Safety is our top priority. Our centers feature soft flooring, rounded edges, live CCTV access, and are staffed entirely by trained women professionals (excluding security).",
+    "cctv": "Absolutely — parents can watch their child live through our secure CCTV feed via the Footprints app, anytime during operating hours.",
+    "payments": "We keep things flexible — parents can manage payments, pause services, or even request refunds directly through our app.",
+    "development": "We focus on holistic development — helping children grow socially, emotionally, and cognitively through structured play, problem-solving, and interaction.",
+    "updates": "Yes, you’ll receive regular updates throughout the day — from what your child ate to nap times, activities, and more — all via the Footprints app.",
+    "fee structure": "Here’s a quick breakdown:\n• One-Time Charges: Admission Fee ₹16,000, Registration ₹7,000, Welcome Kit ₹7,500\n• Monthly Fee: Pre School ₹8,999, Daycare ₹15,999, After School ₹7,999.",
+    "fee": "Sure! Here's the fee structure:\nOne-Time Charges:\n- Admission Fee: ₹16,000\n- Registration: ₹7,000\n- Welcome Kit: ₹7,500\nMonthly Fees:\n- Pre School: ₹8,999\n- Daycare: ₹15,999\n- After School: ₹7,999.",
+    "refund": "We believe in complete satisfaction — if you’re ever unhappy, you can request a refund for that day’s childcare.",
+    "pause": "Absolutely — we understand plans can change. You can pause services anytime by contacting your center or through our app.",
+    "enroll": "Getting started is easy! Just fill out our admission form online or drop by your nearest Footprints center.",
+    "sibling discount": "Yes, we offer sibling benefits! You can ask your local center for the latest details and offers.",
 }
+

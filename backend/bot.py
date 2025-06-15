@@ -57,20 +57,56 @@ Instructions:
 - If input is not relevant, output "invalid".
 
 Examples:
-User: "Can we do sector 50?" → {{"intent": "change_locality", "locality": "Sector 50"}}
-User: "Actually, Noida sector 50 please" → {{"intent": "change_locality", "locality": "Sector 50"}}
-User: "Change city to Lucknow" → {{"intent": "change_city", "city": "Lucknow"}}
-User: "Can we do Aliganj Lucknow?" → {{"intent": "change_city", "city": "Lucknow", "locality": "Aliganj"}}
-User: "yes" → {{"intent": "schedule_visit"}}
-User: "schedule a visit" → {{"intent": "schedule_visit"}}
-User: "no, try sector 104" → {{"intent": "change_locality", "locality": "Sector 104"}}
-User: "I want sector 62" → {{"intent": "change_locality", "locality": "Sector 62"}}
-User: "what is the fee?" → {{"intent": "faq", "topic": "fee"}}
-User: "ok" → {{"intent": "invalid"}}
-User: "no thank you" → {{"intent": "end_conversation"}}
-User: "no, I'm good" → {{"intent": "end_conversation"}}
-User: "that's all" → {{"intent": "end_conversation"}}
-User: "bye" → {{"intent": "end_conversation"}}
+User: "Raj" → {"intent": "provide_name", "name": "Raj"}
+User: "Aarav" → {"intent": "provide_name", "name": "Aarav"}
+User: "My name is Meera" → {"intent": "provide_name", "name": "Meera"}
+User: "This is Kabir" → {"intent": "provide_name", "name": "Kabir"}
+User: "It’s Rhea" → {"intent": "provide_name", "name": "Rhea"}
+User: "My daughter's name is Anaya" → {"intent": "provide_name", "name": "Anaya"}
+User: "Priyanshu" → {"intent": "provide_name", "name": "Priyanshu"}
+User: "what's your name?" → {"intent": "invalid"}
+User: "hmm" → {"intent": "invalid"}
+User: "ok" → {"intent": "invalid"}
+
+User: "I want full day care" → {"intent": "provide_program", "program": "Full Day Care"}
+User: "after school" → {"intent": "provide_program", "program": "After School"}
+User: "Pre-school please" → {"intent": "provide_program", "program": "Pre-School"}
+User: "preschool" → {"intent": "provide_program", "program": "Pre-School"}
+User: "daycare" → {"intent": "provide_program", "program": "Full Day Care"}
+
+User: "Delhi" → {"intent": "provide_city", "city": "Delhi"}
+User: "Looking in Noida" → {"intent": "provide_city", "city": "Noida"}
+User: "Gurgaon" → {"intent": "provide_city", "city": "Gurgaon"}
+User: "Change city to Lucknow" → {"intent": "change_city", "city": "Lucknow"}
+User: "Can we do Aliganj Lucknow?" → {"intent": "change_city", "city": "Lucknow", "locality": "Aliganj"}
+
+User: "sector 62" → {"intent": "provide_locality", "locality": "Sector 62"}
+User: "New Friends Colony" → {"intent": "provide_locality", "locality": "New Friends Colony"}
+User: "Change to NFC" → {"intent": "change_locality", "locality": "New Friends Colony"}
+User: "no, try sector 104" → {"intent": "change_locality", "locality": "Sector 104"}
+
+User: "Can we do sector 50?" → {"intent": "change_locality", "locality": "Sector 50"}
+User: "Actually, Noida sector 50 please" → {"intent": "change_locality", "locality": "Sector 50"}
+User: "I want sector 62" → {"intent": "change_locality", "locality": "Sector 62"}
+
+User: "what is the fee?" → {"intent": "faq", "topic": "fee"}
+User: "what's the curriculum?" → {"intent": "faq", "topic": "curriculum"}
+User: "do you provide meals?" → {"intent": "faq", "topic": "meals"}
+User: "how about safety?" → {"intent": "faq", "topic": "safety"}
+User: "what are the hours?" → {"intent": "faq", "topic": "operating hours"}
+
+User: "yes" → {"intent": "schedule_visit"}
+User: "schedule a visit" → {"intent": "schedule_visit"}
+User: "I'd like to come tomorrow" → {"intent": "schedule_visit"}
+
+User: "no thank you" → {"intent": "end_conversation"}
+User: "no, I'm good" → {"intent": "end_conversation"}
+User: "that's all" → {"intent": "end_conversation"}
+User: "bye" → {"intent": "end_conversation"}
+User: "nothing else" → {"intent": "end_conversation"}
+User: "exit" → {"intent": "end_conversation"}
+User: "stop" → {"intent": "end_conversation"}
+
 
 Respond ONLY in JSON with keys for each field relevant to the step, plus "intent".
 """

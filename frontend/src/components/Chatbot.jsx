@@ -69,6 +69,7 @@ const ChatBot = () => {
 			const transcript = event.results[0][0].transcript;
 			setInput((prev) => prev + " " + transcript);
 		};
+
 		recognition.onend = () => setIsListening(false);
 		recognition.onerror = () => setIsListening(false);
 		recognitionRef.current = recognition;

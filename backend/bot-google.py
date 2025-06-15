@@ -1,8 +1,9 @@
 import json
 import openai
 import difflib
+from dotenv import load_dotenv
 
-openai.api_key = "YOUR_API_KEY"  # Replace with dotenv or env var in prod
+client = openai.OpenAI()
 
 # Load center data
 with open("centers.json", "r") as f:

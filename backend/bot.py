@@ -104,6 +104,11 @@ User: "I'd like to come tomorrow" → {{"intent": "schedule_visit"}}
 User: "no thank you" → {{"intent": "end_conversation"}}
 User: "bye" → {{"intent": "end_conversation"}}
 
+User: "I am not comfortable sharing the name" → {{"intent": "deny_name"}}
+User: "I'd rather not give the name" → {{"intent": "deny_name"}}
+User: "I don't want to say it" → {{"intent": "deny_name"}}
+
+
 Respond ONLY in JSON with keys for each field relevant to the step, plus "intent".
 """
 
@@ -184,10 +189,18 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
 
 
     def handle_message(self, user_input):
+        # Step 1: Check if it's a FAQ
         faq_topic = self.ask_gpt(self.gpt_faq_prompt(user_input))
         if faq_topic != "not_faq":
-            return self.answer_faq(faq_topic)
+            response = self.answer_faq(faq_topic)
+            if self.step == "schedule":
+                if self.fact_injected < 2:
+                    response += f"\nBy the way, did you know? {self.random_fact()}"
+                    self.fact_injected += 1
+                response += "\nIs there anything else I can help you with — like safety, curriculum, meals, or fees?"
+            return response
 
+        # Step 2: Classify user intent
         prompt = self.gpt_intent_prompt(self.step, user_input, self.collected)
         gpt_response = self.ask_gpt(prompt)
         print("DEBUG GPT RESPONSE:", gpt_response)
@@ -198,12 +211,27 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
 
         intent = result.get("intent", "invalid")
 
+        # Step 3: Conversation end
         if intent == "end_conversation":
             return "Alright! Feel free to come back anytime. Have a great day!"
 
+        # Step 4: Handle invalid/ambiguous
         if intent == "invalid":
+            if self.step == "name":
+                return (
+                    "I understand your concern — your child's name helps me personalize our conversation and recommend the right program.\n"
+                    "It will only be used within this private chat. Could you please share just a first name or nickname?"
+                )
             return "Sorry, I didn't catch that. Could you please try again?"
 
+        # Step 5: Handle explicit name denial
+        if intent == "deny_name":
+            return (
+                "I completely understand — your privacy is important. Your child's name will only be used for personalization within this chat.\n"
+                "Unfortunately, I can’t proceed without it. Could you please share just a first name or even a nickname?"
+            )
+
+        # Step 6: Handle name input
         if self.step == "name" and "name" in result:
             self.collected["name"] = result["name"]
             if "program" in result:
@@ -221,6 +249,7 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
                 "All programs operate Monday to Friday at every center. 📚"
             )
 
+        # Step 7: Handle program input
         if self.step == "program" and "program" in result:
             self.collected["program"] = self.normalize_program(result["program"])
             if "city" in result:
@@ -230,6 +259,7 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
             self.step = "city" if "city" not in self.collected else "locality"
             return "Got it! Which city are you looking for a center in?"
 
+        # Step 8: Handle city input
         if self.step == "city" and "city" in result:
             city = result["city"]
             city_centers = [c for c in self.CENTERS if c["city"].lower() == city.lower()]
@@ -242,10 +272,12 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
             self.step = "locality" if "locality" not in self.collected else "recommend_center"
             return "Thanks! Which locality in the city?"
 
+        # Step 9: Handle locality input
         if self.step == "locality" and "locality" in result:
             self.collected["locality"] = result["locality"]
             self.step = "recommend_center"
 
+        # Step 10: Recommend center
         if self.step == "recommend_center":
             center = self.find_center(self.collected["city"], self.collected["locality"])
             if not center:
@@ -258,6 +290,7 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
             reply += "\nWould you like to schedule a visit, or change city/locality?"
             return reply
 
+        # Step 11: Handle scheduling
         if self.step == "schedule":
             if intent in ["schedule_visit", "yes"]:
                 reply = (
@@ -284,7 +317,9 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
             else:
                 return "Sorry, I didn't catch that. Would you like to schedule a visit or change city/locality?"
 
+        # Default fallback
         return "Let me know how I can help!"
+
 
 # Constants
 FOOTPRINTS_FACTS = [

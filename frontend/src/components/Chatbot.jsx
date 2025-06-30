@@ -108,11 +108,17 @@ const ChatBot = () => {
 		setIsBotTyping(true);
 
 		try {
-			const res = await fetch("https://footprints-bot.onrender.com/chat", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ message: input, session_id: sessionId.current }),
-			});
+			const res = await fetch(
+				"https://backend-purple-morning-9709.fly.dev/chat",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						message: input,
+						session_id: sessionId.current,
+					}),
+				}
+			);
 
 			const data = await res.json();
 

@@ -10,10 +10,7 @@ bot = FootprintsBot()
 # CORS setup for local dev (Vite), Vercel (frontend), and Render (backend)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://footprints-bot.vercel.app"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

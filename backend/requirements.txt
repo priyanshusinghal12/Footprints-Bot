@@ -7,3 +7,4 @@ langchain-openai
 pymongo
 python-dotenv
 dnspython
+langgraph

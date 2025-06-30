@@ -20,6 +20,7 @@ class FootprintsBot:
         self.collected = {}
         self.step = "name"
         self.fact_injected = 0
+        self.name_attempts = 0  # Track how many times we've asked for name
 
         self.PROGRAMS = [
             ("pre school", "Pre-School"),
@@ -48,66 +49,90 @@ class FootprintsBot:
             return match.group(1).strip()
         return response.strip()
 
+    def is_footprints_related(self, user_input):
+        """Check if the user input is related to Footprints or general queries we should handle"""
+        
+        # If we're in the middle of a conversation flow, be more lenient
+        if self.step in ["program", "city", "locality", "schedule"]:
+            return True
+            
+        footprints_keywords = [
+            'footprints', 'preschool', 'pre-school', 'daycare', 'day care', 'after school', 'afterschool',
+            'admission', 'enroll', 'fee', 'curriculum', 'safety', 'cctv', 'center', 'centre', 'programme', 'program',
+            'child', 'kid', 'age', 'visit', 'schedule', 'meal', 'teacher', 'highscope', 'city', 'locality',
+            'refund', 'pause', 'app', 'payment', 'sector', 'colony', 'nagar', 'vihar', 'area', 'block'
+        ]
+        
+        # Also check if it's a valid response to our questions (names, ages, yes/no, etc.)
+        simple_responses = ['yes', 'no', 'ok', 'sure', 'maybe', 'thanks', 'thank you', 'bye', 'hello', 'hi', 
+                           'skip', 'continue', 'next', 'move on', 'later', 'fine', 'alright']
+        
+        # Check if it's likely a name (single word, capitalized, common name patterns)
+        if len(user_input.split()) <= 2 and user_input.strip().replace(' ', '').replace('-', '').isalpha():
+            return True
+            
+        # Check if it contains numbers (could be sector, age, etc.)
+        if any(char.isdigit() for char in user_input):
+            return True
+            
+        # Check if it contains any Footprints-related keywords
+        user_lower = user_input.lower()
+        if any(keyword in user_lower for keyword in footprints_keywords + simple_responses):
+            return True
+            
+        # Check if it's likely an age, city, or program
+        if any(word in user_lower for word in ['year', 'old', 'months', 'delhi', 'noida', 'gurgaon', 'lucknow', 
+                                               'mumbai', 'bangalore', 'pune', 'hyderabad', 'chennai']):
+            return True
+            
+        # Check for common area/locality patterns
+        locality_patterns = ['sector', 'phase', 'block', 'extension', 'market', 'nagar', 'colony', 'vihar', 'marg']
+        if any(pattern in user_lower for pattern in locality_patterns):
+            return True
+            
+        return False
+
     def gpt_intent_prompt(self, step, user_input, collected):
         return f"""
-You are a helpful assistant for Footprints Preschool admissions. Your job is to extract the required field for the current step, classify the intent, and normalize user input. If the user provides more than one field, extract all relevant ones. If the input is ambiguous, irrelevant, or not matching the expected field, return "invalid".
+You are a helpful assistant for Footprints Preschool admissions. Your job is to extract the required field for the current step, classify the intent, and normalize user input. Be flexible and human-like in your interpretation.
 
 Current step: {step}
 User input: "{user_input}"
 Collected so far: {collected}
 
 Instructions:
-- For name: Recognize if the input is a likely child's name (not "ok", "maybe", etc.).
-- For program: Classify as one of Pre-School, Full Day Care, After School (normalize typos/variants).
-- For city/locality: Normalize and expand abbreviations (e.g., "nfc" → "New Friends Colony").
-- If user asks a question (FAQ), recognize and extract the question.
-- If user wants to change city/locality, extract new values.
-- If user provides multiple fields, extract all.
-- If input is not relevant, output "invalid".
+- For name: Recognize if the input is a likely child's name. If user explicitly refuses/says no/skip, classify as "skip_name". If input is unclear/ambiguous (like "ok", "sure", "fine"), classify as "clarify"
+- For program: Classify as one of Pre-School, Full Day Care, After School (normalize typos/variants)
+- For city/locality: Normalize and expand abbreviations (e.g., "nfc" → "New Friends Colony")
+- If user asks a question (FAQ), recognize and extract the question
+- If user wants to change city/locality, extract new values
+- If user provides multiple fields, extract all
+- Be flexible - if user wants to skip a field or move to next topic, allow it
 
-Examples:
+Examples for name step:
 User: "Raj" → {{"intent": "provide_name", "name": "Raj"}}
-User: "Aarav" → {{"intent": "provide_name", "name": "Aarav"}}
-User: "My name is Meera" → {{"intent": "provide_name", "name": "Meera"}}
-User: "This is Kabir" → {{"intent": "provide_name", "name": "Kabir"}}
-User: "It’s Rhea" → {{"intent": "provide_name", "name": "Rhea"}}
 User: "My daughter's name is Anaya" → {{"intent": "provide_name", "name": "Anaya"}}
-User: "Priyanshu" → {{"intent": "provide_name", "name": "Priyanshu"}}
-User: "what's your name?" → {{"intent": "invalid"}}
-User: "hmm" → {{"intent": "invalid"}}
-User: "ok" → {{"intent": "invalid"}}
+User: "I'd rather not say" → {{"intent": "skip_name"}}
+User: "can we skip the name?" → {{"intent": "skip_name"}}
+User: "no thanks" → {{"intent": "skip_name"}}
+User: "skip" → {{"intent": "skip_name"}}
+User: "ok" → {{"intent": "clarify"}}
+User: "sure" → {{"intent": "clarify"}}
+User: "fine" → {{"intent": "clarify"}}
+User: "what?" → {{"intent": "clarify"}}
 
+Other examples:
 User: "I want full day care" → {{"intent": "provide_program", "program": "Full Day Care"}}
-User: "after school" → {{"intent": "provide_program", "program": "After School"}}
-User: "Pre-school please" → {{"intent": "provide_program", "program": "Pre-School"}}
 User: "preschool" → {{"intent": "provide_program", "program": "Pre-School"}}
-User: "daycare" → {{"intent": "provide_program", "program": "Full Day Care"}}
 
 User: "Delhi" → {{"intent": "provide_city", "city": "Delhi"}}
 User: "Looking in Noida" → {{"intent": "provide_city", "city": "Noida"}}
-User: "Gurgaon" → {{"intent": "provide_city", "city": "Gurgaon"}}
-User: "Change city to Lucknow" → {{"intent": "change_city", "city": "Lucknow"}}
-User: "Can we do Aliganj Lucknow?" → {{"intent": "change_city", "city": "Lucknow", "locality": "Aliganj"}}
-
-User: "sector 62" → {{"intent": "provide_locality", "locality": "Sector 62"}}
-User: "New Friends Colony" → {{"intent": "provide_locality", "locality": "New Friends Colony"}}
-User: "Change to NFC" → {{"intent": "change_locality", "locality": "New Friends Colony"}}
-User: "no, try sector 104" → {{"intent": "change_locality", "locality": "Sector 104"}}
 
 User: "what is the fee?" → {{"intent": "faq", "topic": "fee"}}
-User: "what's the curriculum?" → {{"intent": "faq", "topic": "curriculum"}}
+User: "tell me about safety" → {{"intent": "faq", "topic": "safety"}}
 
 User: "yes" → {{"intent": "schedule_visit"}}
-User: "schedule a visit" → {{"intent": "schedule_visit"}}
-User: "I'd like to come tomorrow" → {{"intent": "schedule_visit"}}
-
 User: "no thank you" → {{"intent": "end_conversation"}}
-User: "bye" → {{"intent": "end_conversation"}}
-
-User: "I am not comfortable sharing the name" → {{"intent": "deny_name"}}
-User: "I'd rather not give the name" → {{"intent": "deny_name"}}
-User: "I don't want to say it" → {{"intent": "deny_name"}}
-
 
 Respond ONLY in JSON with keys for each field relevant to the step, plus "intent".
 """
@@ -186,21 +211,39 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
             "Is there anything else I can help you with — like safety, curriculum, meals, or fees?"
         )
 
-
+    def get_next_question(self):
+        """Get the next logical question to ask based on what we have"""
+        child_name = self.collected.get("name", "your child")
+        
+        if "program" not in self.collected:
+            return (
+                f"Which program are you considering for {child_name}? We offer:\n"
+                "- Pre-School (9:00 AM to 12:30 PM)\n"
+                "- Full Day Care (Pre-School + Daycare, 9:00 AM to 6:30 PM)\n"
+                "- After School (3:30 PM to 6:30 PM)\n"
+                "All programs operate Monday to Friday at every center. 📚"
+            )
+        elif "city" not in self.collected:
+            return "Which city are you looking for a center in?"
+        elif "locality" not in self.collected:
+            return f"Which locality in {self.collected['city']}?"
+        else:
+            return None
 
     def handle_message(self, user_input):
-        # Step 1: Check if it's a FAQ
+        user_input = user_input.strip()
+        
+        # Step 1: Check if it's Footprints-related
+        if not self.is_footprints_related(user_input):
+            return "I'm here to assist only with Footprints-related queries. 😊"
+
+        # Step 2: Check if it's a FAQ
         faq_topic = self.ask_gpt(self.gpt_faq_prompt(user_input))
         if faq_topic != "not_faq":
-            response = self.answer_faq(faq_topic)
-            if self.step == "schedule":
-                if self.fact_injected < 2:
-                    response += f"\nBy the way, did you know? {self.random_fact()}"
-                    self.fact_injected += 1
-                response += "\nIs there anything else I can help you with — like safety, curriculum, meals, or fees?"
-            return response
+            return self.answer_faq(faq_topic)
 
-        # Step 2: Classify user intent
+
+        # Step 3: Classify user intent
         prompt = self.gpt_intent_prompt(self.step, user_input, self.collected)
         gpt_response = self.ask_gpt(prompt)
         print("DEBUG GPT RESPONSE:", gpt_response)
@@ -211,73 +254,95 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
 
         intent = result.get("intent", "invalid")
 
-        # Step 3: Conversation end
+        # Step 4: Conversation end
         if intent == "end_conversation":
             return "Alright! Feel free to come back anytime. Have a great day!"
 
-        # Step 4: Handle invalid/ambiguous
-        if intent == "invalid":
-            if self.step == "name":
+        # Step 5: Handle name step
+        if self.step == "name":
+            if intent == "skip_name":
+                self.name_attempts += 1
+                if self.name_attempts >= 2:  # After 2 attempts, let them skip
+                    self.step = "program"
+                    return (
+                        "That's perfectly fine! We can continue without the name. 😊\n"
+                        + self.get_next_question()
+                    )
+                else:
+                    return (
+                        "I understand your concern — your child's name helps me personalize our conversation.\n"
+                        "It will only be used within this private chat. Could you please share just a first name or nickname?\n"
+                        "(Or let me know if you'd prefer to skip this step)"
+                    )
+            elif intent == "clarify":
                 return (
-                    "I understand your concern — your child's name helps me personalize our conversation and recommend the right program.\n"
-                    "It will only be used within this private chat. Could you please share just a first name or nickname?"
+                    "I didn't quite understand that! 😅 I'm looking for your child's name to personalize our chat.\n"
+                    "Could you please share their first name or nickname? (Or let me know if you'd prefer to skip this)"
                 )
-            return "Sorry, I didn't catch that. Could you please try again?"
+            elif intent == "invalid":
+                self.name_attempts += 1
+                if self.name_attempts >= 2:
+                    self.step = "program"
+                    return (
+                        "No worries! We can continue without the name. 😊\n"
+                        + self.get_next_question()
+                    )
+                else:
+                    return (
+                        "I'm looking for your child's name to help personalize our conversation. 👶\n"
+                        "Could you share their first name or nickname? (Or say 'skip' if you'd prefer not to)"
+                    )
+            elif "name" in result:
+                self.collected["name"] = result["name"]
+                self.step = "program"
+                # Check if they provided program too
+                if "program" in result:
+                    self.collected["program"] = self.normalize_program(result["program"])
+                    self.step = "city"
+                if "city" in result:
+                    self.collected["city"] = result["city"]
+                    self.step = "locality" if "program" in self.collected else "program"
+                
+                child_name = self.collected["name"]
+                return f"Thanks {child_name}! " + (self.get_next_question() or "")
 
-        # Step 5: Handle explicit name denial
-        if intent == "deny_name":
-            return (
-                "I completely understand — your privacy is important. Your child's name will only be used for personalization within this chat.\n"
-                "Unfortunately, I can’t proceed without it. Could you please share just a first name or even a nickname?"
-            )
-
-        # Step 6: Handle name input
-        if self.step == "name" and "name" in result:
-            self.collected["name"] = result["name"]
+        # Step 6: Handle program step
+        if self.step == "program":
             if "program" in result:
                 self.collected["program"] = self.normalize_program(result["program"])
-            if "city" in result:
-                self.collected["city"] = result["city"]
-            if "locality" in result:
-                self.collected["locality"] = result["locality"]
-            self.step = "program" if "program" not in self.collected else "city"
-            return (
-                f"Thanks {self.collected['name']}! Which program are you considering? We offer:\n"
-                "- Pre-School (9:00 AM to 12:30 PM)\n"
-                "- Full Day Care (Pre-School + Daycare, 9:00 AM to 6:30 PM)\n"
-                "- After School (3:30 PM to 6:30 PM)\n"
-                "All programs operate Monday to Friday at every center. 📚"
-            )
-
-        # Step 7: Handle program input
-        if self.step == "program" and "program" in result:
-            self.collected["program"] = self.normalize_program(result["program"])
-            if "city" in result:
-                self.collected["city"] = result["city"]
-            if "locality" in result:
-                self.collected["locality"] = result["locality"]
-            self.step = "city" if "city" not in self.collected else "locality"
-            return "Got it! Which city are you looking for a center in?"
-
-        # Step 8: Handle city input
-        if self.step == "city" and "city" in result:
-            city = result["city"]
-            city_centers = [c for c in self.CENTERS if c["city"].lower() == city.lower()]
-            if not city_centers:
                 self.step = "city"
-                return f"Sorry, we don't have any centers in or near {city}.\nTry a different city like Noida, Delhi, or Lucknow?"
-            self.collected["city"] = city
+                if "city" in result:
+                    self.collected["city"] = result["city"]
+                    self.step = "locality"
+                return self.get_next_question() or "Got it!"
+            elif intent == "invalid":
+                return "Could you let me know which program you're interested in? Pre-School, Full Day Care, or After School?"
+
+        # Step 7: Handle city step
+        if self.step == "city":
+            if "city" in result:
+                city = result["city"]
+                city_centers = [c for c in self.CENTERS if c["city"].lower() == city.lower()]
+                if not city_centers:
+                    return f"Sorry, we don't have any centers in or near {city}.\nTry a different city like Noida, Delhi, or Lucknow?"
+                self.collected["city"] = city
+                self.step = "locality"
+                if "locality" in result:
+                    self.collected["locality"] = result["locality"]
+                    self.step = "recommend_center"
+                return self.get_next_question() or ""
+            elif intent == "invalid":
+                return "Which city are you looking for a center in?"
+
+        # Step 8: Handle locality step
+        if self.step == "locality":
             if "locality" in result:
                 self.collected["locality"] = result["locality"]
-            self.step = "locality" if "locality" not in self.collected else "recommend_center"
-            return "Thanks! Which locality in the city?"
+                self.step = "recommend_center"
+            elif intent == "invalid":
+                return f"Which locality in {self.collected.get('city', 'the city')}?"
 
-        # Step 9: Handle locality input
-        if self.step == "locality" and "locality" in result:
-            self.collected["locality"] = result["locality"]
-            self.step = "recommend_center"
-
-        # Step 10: Recommend center
+        # Step 9: Recommend center
         if self.step == "recommend_center":
             center = self.find_center(self.collected["city"], self.collected["locality"])
             if not center:
@@ -290,7 +355,7 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
             reply += "\nWould you like to schedule a visit, or change city/locality?"
             return reply
 
-        # Step 11: Handle scheduling
+        # Step 10: Handle scheduling
         if self.step == "schedule":
             if intent in ["schedule_visit", "yes"]:
                 reply = (
@@ -315,10 +380,11 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
                 reply += "\nWould you like to schedule a visit, or change city/locality?"
                 return reply
             else:
-                return "Sorry, I didn't catch that. Would you like to schedule a visit or change city/locality?"
+                return "Would you like to schedule a visit or change city/locality?"
 
         # Default fallback
-        return "Let me know how I can help!"
+        next_q = self.get_next_question()
+        return next_q if next_q else "How else can I help you with Footprints?"
 
 
 # Constants
@@ -330,24 +396,24 @@ FOOTPRINTS_FACTS = [
     "All our staff (except guards) are women, with strict background checks and regular health checkups.",
     "We provide healthy, nutritious meals and do not serve junk food or processed snacks.",
     "Parents can pause services, request refunds, and move centers via our app.",
-    "If you’re not satisfied, you can request a refund for a day's childcare fees.",
+    "If you're not satisfied, you can request a refund for a day's childcare fees.",
 ]
+
 FAQ_ANSWERS = {
     "age range": "We welcome little ones aged 12 months to 8 years — ensuring age-appropriate care and learning at every stage.",
     "operating hours": "Our centers are open Monday to Friday, from 9:00 AM to 6:30 PM. Some branches even offer early drop-offs or late pick-ups for added flexibility.",
     "curriculum": "We follow the US-based HighScope Curriculum — a research-backed approach that encourages children to explore, experiment, and learn through engaging, hands-on activities.",
     "teacher student ratio": "To give each child the attention they deserve, we maintain a low teacher-to-student ratio of 1:10.",
-    "meals": "Yes! We provide healthy, freshly prepared meals and snacks — and we’re happy to accommodate dietary preferences or restrictions.",
+    "meals": "Yes! We provide healthy, freshly prepared meals and snacks — and we're happy to accommodate dietary preferences or restrictions.",
     "safety": "Safety is our top priority. Our centers feature soft flooring, rounded edges, live CCTV access, and are staffed entirely by trained women professionals (excluding security).",
     "cctv": "Absolutely — parents can watch their child live through our secure CCTV feed via the Footprints app, anytime during operating hours.",
     "payments": "We keep things flexible — parents can manage payments, pause services, or even request refunds directly through our app.",
     "development": "We focus on holistic development — helping children grow socially, emotionally, and cognitively through structured play, problem-solving, and interaction.",
-    "updates": "Yes, you’ll receive regular updates throughout the day — from what your child ate to nap times, activities, and more — all via the Footprints app.",
-    "fee structure": "Here’s a quick breakdown:\n• One-Time Charges: Admission Fee ₹16,000, Registration ₹7,000, Welcome Kit ₹7,500\n• Monthly Fee: Pre School ₹8,999, Daycare ₹15,999, After School ₹7,999.",
+    "updates": "Yes, you'll receive regular updates throughout the day — from what your child ate to nap times, activities, and more — all via the Footprints app.",
+    "fee structure": "Here's a quick breakdown:\n• One-Time Charges: Admission Fee ₹16,000, Registration ₹7,000, Welcome Kit ₹7,500\n• Monthly Fee: Pre School ₹8,999, Daycare ₹15,999, After School ₹7,999.",
     "fee": "Sure! Here's the fee structure:\nOne-Time Charges:\n- Admission Fee: ₹16,000\n- Registration: ₹7,000\n- Welcome Kit: ₹7,500\nMonthly Fees:\n- Pre School: ₹8,999\n- Daycare: ₹15,999\n- After School: ₹7,999.",
-    "refund": "We believe in complete satisfaction — if you’re ever unhappy, you can request a refund for that day’s childcare.",
+    "refund": "We believe in complete satisfaction — if you're ever unhappy, you can request a refund for that day's childcare.",
     "pause": "Absolutely — we understand plans can change. You can pause services anytime by contacting your center or through our app.",
     "enroll": "Getting started is easy! Just fill out our admission form online or drop by your nearest Footprints center.",
     "sibling discount": "Yes, we offer sibling benefits! You can ask your local center for the latest details and offers.",
 }
-

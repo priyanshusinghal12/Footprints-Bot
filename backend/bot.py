@@ -20,7 +20,7 @@ class FootprintsBot:
         self.collected = {}
         self.step = "name"
         self.fact_injected = 0
-        self.name_attempts = 0  # Track how many times we've asked for name
+        self.name_attempts = 0
 
         self.PROGRAMS = [
             ("pre school", "Pre-School"),
@@ -65,7 +65,7 @@ class FootprintsBot:
         
         # Also check if it's a valid response to our questions (names, ages, yes/no, etc.)
         simple_responses = ['yes', 'no', 'ok', 'sure', 'maybe', 'thanks', 'thank you', 'bye', 'hello', 'hi', 
-                           'skip', 'continue', 'next', 'move on', 'later', 'fine', 'alright']
+                            'skip', 'continue', 'next', 'move on', 'later', 'fine', 'alright']
         
         # Check if it's likely a name (single word, capitalized, common name patterns)
         if len(user_input.split()) <= 2 and user_input.strip().replace(' ', '').replace('-', '').isalpha():
@@ -82,7 +82,7 @@ class FootprintsBot:
             
         # Check if it's likely an age, city, or program
         if any(word in user_lower for word in ['year', 'old', 'months', 'delhi', 'noida', 'gurgaon', 'lucknow', 
-                                               'mumbai', 'bangalore', 'pune', 'hyderabad', 'chennai']):
+                                                'mumbai', 'bangalore', 'pune', 'hyderabad', 'chennai']):
             return True
             
         # Check for common area/locality patterns
@@ -100,42 +100,139 @@ Current step: {step}
 User input: "{user_input}"
 Collected so far: {collected}
 
+IMPORTANT: When we're asking for a specific field (name, program, city, locality), prioritize recognizing direct answers to that field over FAQ classification. Only classify as FAQ if the user is clearly asking a question with question words or phrases like "what is", "tell me about", "how much", etc.
+
 Instructions:
-- For name: Recognize if the input is a likely child's name. If user explicitly refuses/says no/skip, classify as "skip_name". If input is unclear/ambiguous (like "ok", "sure", "fine"), classify as "clarify"
-- For program: Classify as one of Pre-School, Full Day Care, After School (normalize typos/variants)
-- For city/locality: Normalize and expand abbreviations (e.g., "nfc" → "New Friends Colony")
-- If user asks a question (FAQ), recognize and extract the question
+- For name: Recognize if the input is a likely child's name. Must be a real, proper name (not random letters, gibberish, or casual words like "ay o", "hwy", etc.). If user explicitly refuses/says no/skip, classify as "skip_field". If input is unclear/ambiguous (like "ok", "sure", "fine") or not a real name, classify as "clarify"
+- For program: Classify as one of Pre-School, Full Day Care, After School (normalize typos/variants). If user refuses/skips, classify as "skip_field". IMPORTANT: "full day care", "daycare", "preschool", "after school" should be classified as provide_program, NOT as FAQ.
+- For city/locality: Normalize and expand abbreviations (e.g., "nfc" → "New Friends Colony"). City cannot be skipped (it's essential). If user wants to change city, classify as "provide_city".
+- If user asks a question (FAQ), recognize and extract the question - but only if they're clearly asking with question words
 - If user wants to change city/locality, extract new values
 - If user provides multiple fields, extract all
-- Be flexible - if user wants to skip a field or move to next topic, allow it
+- Be flexible - if user wants to skip a field or move to next topic, allow it (except city)
+- If user says goodbye/end conversation, classify as "end_conversation"
 
 Examples for name step:
 User: "Raj" → {{"intent": "provide_name", "name": "Raj"}}
 User: "My daughter's name is Anaya" → {{"intent": "provide_name", "name": "Anaya"}}
-User: "I'd rather not say" → {{"intent": "skip_name"}}
-User: "can we skip the name?" → {{"intent": "skip_name"}}
-User: "no thanks" → {{"intent": "skip_name"}}
-User: "skip" → {{"intent": "skip_name"}}
+User: "I'd rather not say" → {{"intent": "skip_field"}}
+User: "can we skip the name?" → {{"intent": "skip_field"}}
+User: "no thanks" → {{"intent": "skip_field"}}
+User: "skip" → {{"intent": "skip_field"}}
 User: "ok" → {{"intent": "clarify"}}
 User: "sure" → {{"intent": "clarify"}}
 User: "fine" → {{"intent": "clarify"}}
 User: "what?" → {{"intent": "clarify"}}
+User: "ay o" → {{"intent": "clarify"}}
+User: "hgosglsbddlsgbos'da" → {{"intent": "clarify"}}
+User: "hwy" → {{"intent": "clarify"}}
 
-Other examples:
+Examples for program step:
 User: "I want full day care" → {{"intent": "provide_program", "program": "Full Day Care"}}
+User: "full day care" → {{"intent": "provide_program", "program": "Full Day Care"}}
+User: "daycare" → {{"intent": "provide_program", "program": "Full Day Care"}}
 User: "preschool" → {{"intent": "provide_program", "program": "Pre-School"}}
+User: "after school" → {{"intent": "provide_program", "program": "After School"}}
+User: "I don't want to choose program now" → {{"intent": "skip_field"}}
+User: "what programs do you have?" → {{"intent": "faq", "topic": "programs"}}
+User: "tell me about full day care" → {{"intent": "faq", "topic": "programs"}}
 
+Examples for city/locality step:
 User: "Delhi" → {{"intent": "provide_city", "city": "Delhi"}}
 User: "Looking in Noida" → {{"intent": "provide_city", "city": "Noida"}}
+User: "can we do bangalore instead" → {{"intent": "provide_city", "city": "Bangalore"}}
+User: "let's change to Mumbai" → {{"intent": "provide_city", "city": "Mumbai"}}
+User: "Sector 12" → {{"intent": "provide_locality", "locality": "Sector 12"}}
 
+Examples for city/locality step:
+User: "Delhi" → {{"intent": "provide_city", "city": "Delhi"}}
+User: "Looking in Noida" → {{"intent": "provide_city", "city": "Noida"}}
+User: "can we do bangalore instead" → {{"intent": "provide_city", "city": "Bangalore"}}
+User: "let's change to Mumbai" → {{"intent": "provide_city", "city": "Mumbai"}}
+User: "gurugram" → {{"intent": "provide_city", "city": "Gurgaon"}} 
+User: "ggn" → {{"intent": "provide_city", "city": "Gurgaon"}} 
+User: "Gudgaon" → {{"intent": "provide_city", "city": "Gurgaon"}} 
+User: "Sector 12" → {{"intent": "provide_locality", "locality": "Sector 12"}}
+
+Other examples:
 User: "what is the fee?" → {{"intent": "faq", "topic": "fee"}}
 User: "tell me about safety" → {{"intent": "faq", "topic": "safety"}}
+User: "how much does it cost?" → {{"intent": "faq", "topic": "fee"}}
 
 User: "yes" → {{"intent": "schedule_visit"}}
+User: "bye" → {{"intent": "end_conversation"}}
 User: "no thank you" → {{"intent": "end_conversation"}}
 
 Respond ONLY in JSON with keys for each field relevant to the step, plus "intent".
 """
+
+    def gpt_response_prompt(self, intent, step, user_input, collected, context=""):
+        """Generate dynamic responses based on intent and context"""
+        child_name = collected.get("name", "your child")
+        
+        step_descriptions = {
+            "name": "child's name to personalize our conversation",
+            "program": "which program you're interested in (Pre-School, Full Day Care, or After School)",
+            "city": "which city you're looking for a center in",
+            "locality": f"which locality in {collected.get('city', 'the city')}",
+            "schedule": "if you'd like to schedule a visit"
+        }
+        
+        current_field = step_descriptions.get(step, "the information")
+        
+        if intent == "skip_field":
+            if step == "city":
+                return f"""
+Generate a brief, friendly response that explains city is essential to find the right center. Ask which city they're looking in. Keep it under 15 words and conversational.
+"""
+            else:
+                return f"""
+Generate a brief, friendly response that:
+1. Accepts their preference to skip sharing {current_field}
+2. Briefly mentions it would help personalize our chat
+3. Asks if they'd like to share it or skip to the next step
+4. Keep it under 25 words, conversational and warm (not formal)
+5. End with something like "or shall we move on?"
+
+Context: We're asking for {current_field}
+"""
+        
+        elif intent == "clarify":
+            # Modified prompt for clarify
+            return f"""
+Generate a brief, friendly response that:
+1. Says "Sorry, I didn't understand" or similar.
+2. Clearly re-asks for what you're looking for: {current_field}
+3. Offers the option to skip if they prefer (except for city).
+4. Keep it concise, under 20 words, and helpful.
+
+Context: User said "{user_input}" when we asked for {current_field}
+"""
+        
+        elif intent == "end_conversation":
+            return f"""
+Generate a warm, brief goodbye message that:
+1. Thanks them for their time
+2. Invites them back for Footprints questions
+3. Keep it under 20 words and friendly
+
+Context: User wants to end conversation
+"""
+        
+        elif intent == "invalid":
+            # Modified prompt for invalid
+            return f"""
+Generate a brief, helpful response that:
+1. Says "Sorry, I didn't understand" or similar.
+2. Politely asks for {current_field}
+3. Gives a quick example if helpful.
+4. Offers the option to skip (except for city).
+5. Keep it concise, under 20 words, and patient.
+
+Context: We need {current_field} but user response was unclear
+"""
+        
+        return f"Generate an appropriate response for intent '{intent}' in step '{step}'"
 
     def gpt_faq_prompt(self, user_input):
         return f"""
@@ -169,6 +266,11 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
         )
         return response.choices[0].message.content.strip()
 
+    def generate_dynamic_response(self, intent, step, user_input, collected, context=""):
+        """Generate dynamic response using GPT"""
+        prompt = self.gpt_response_prompt(intent, step, user_input, collected, context)
+        return self.ask_gpt(prompt, temperature=0.7)
+
     def normalize_program(self, text):
         text = text.lower().replace("-", " ").replace("_", " ")
         for key, val in self.PROGRAMS:
@@ -201,21 +303,32 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
         for keyword, response in FAQ_ANSWERS.items():
             if keyword in topic.lower():
                 extra = ""
-                if self.fact_injected < 2:
+                if self.fact_injected < 2 and self.step == "schedule":  # Only add facts after center recommendation
                     extra = f"\nBy the way, did you know? {self.random_fact()}"
                     self.fact_injected += 1
-                return f"{response}{extra}\n\nIs there anything else I can help you with — like safety, curriculum, meals, or fees?"
+                
+                # Only show the "anything else" question after center has been recommended
+                ending = ""
+                if self.step == "schedule":
+                    ending = "\n\nIs there anything else I can help you with — like safety, curriculum, meals, or fees?"
+                
+                return f"{response}{extra}{ending}"
+        
+        ending = ""
+        if self.step == "schedule":
+            ending = "\nIs there anything else I can help you with — like safety, curriculum, meals, or fees?"
         
         return (
-            "I'm not sure about that topic, but someone from our team will reach out to assist you shortly.\n"
-            "Is there anything else I can help you with — like safety, curriculum, meals, or fees?"
+            "I'm not sure about that topic, but someone from our team will reach out to assist you shortly."
+            + ending
         )
 
     def get_next_question(self):
         """Get the next logical question to ask based on what we have"""
         child_name = self.collected.get("name", "your child")
         
-        if "program" not in self.collected:
+        # If program is not collected AND we are at the program step (or just started)
+        if "program" not in self.collected and self.step == "program":
             return (
                 f"Which program are you considering for {child_name}? We offer:\n"
                 "- Pre-School (9:00 AM to 12:30 PM)\n"
@@ -237,13 +350,7 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
         if not self.is_footprints_related(user_input):
             return "I'm here to assist only with Footprints-related queries. 😊"
 
-        # Step 2: Check if it's a FAQ
-        faq_topic = self.ask_gpt(self.gpt_faq_prompt(user_input))
-        if faq_topic != "not_faq":
-            return self.answer_faq(faq_topic)
-
-
-        # Step 3: Classify user intent
+        # Step 2: Classify user intent first (this will handle both direct answers and FAQs)
         prompt = self.gpt_intent_prompt(self.step, user_input, self.collected)
         gpt_response = self.ask_gpt(prompt)
         print("DEBUG GPT RESPONSE:", gpt_response)
@@ -254,46 +361,38 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
 
         intent = result.get("intent", "invalid")
 
-        # Step 4: Conversation end
+        # Step 3: Handle FAQ at any step
+        if intent == "faq":
+            topic = result.get("topic", "")
+            return self.answer_faq(topic)
+
+        # Step 4: Handle end conversation
         if intent == "end_conversation":
-            return "Alright! Feel free to come back anytime. Have a great day!"
+            return self.generate_dynamic_response("end_conversation", self.step, user_input, self.collected)
 
         # Step 5: Handle name step
         if self.step == "name":
-            if intent == "skip_name":
+            if intent == "skip_field":
                 self.name_attempts += 1
                 if self.name_attempts >= 2:  # After 2 attempts, let them skip
                     self.step = "program"
-                    return (
-                        "That's perfectly fine! We can continue without the name. 😊\n"
-                        + self.get_next_question()
-                    )
+                    next_question = self.get_next_question()
+                    return f"That's perfectly fine! We can continue without the name. 😊\n{next_question}"
                 else:
-                    return (
-                        "I understand your concern — your child's name helps me personalize our conversation.\n"
-                        "It will only be used within this private chat. Could you please share just a first name or nickname?\n"
-                        "(Or let me know if you'd prefer to skip this step)"
-                    )
+                    return self.generate_dynamic_response("skip_field", "name", user_input, self.collected)
             elif intent == "clarify":
-                return (
-                    "I didn't quite understand that! 😅 I'm looking for your child's name to personalize our chat.\n"
-                    "Could you please share their first name or nickname? (Or let me know if you'd prefer to skip this)"
-                )
+                return self.generate_dynamic_response("clarify", "name", user_input, self.collected)
             elif intent == "invalid":
                 self.name_attempts += 1
                 if self.name_attempts >= 2:
                     self.step = "program"
-                    return (
-                        "No worries! We can continue without the name. 😊\n"
-                        + self.get_next_question()
-                    )
+                    next_question = self.get_next_question()
+                    return f"No worries! We can continue without the name. 😊\n{next_question}"
                 else:
-                    return (
-                        "I'm looking for your child's name to help personalize our conversation. 👶\n"
-                        "Could you share their first name or nickname? (Or say 'skip' if you'd prefer not to)"
-                    )
+                    return self.generate_dynamic_response("invalid", "name", user_input, self.collected)
             elif "name" in result:
                 self.collected["name"] = result["name"]
+                original_step = self.step
                 self.step = "program"
                 # Check if they provided program too
                 if "program" in result:
@@ -304,43 +403,98 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
                     self.step = "locality" if "program" in self.collected else "program"
                 
                 child_name = self.collected["name"]
-                return f"Thanks {child_name}! " + (self.get_next_question() or "")
+                next_question = self.get_next_question()
+                return f"Thanks {child_name}! {next_question or ''}"
 
         # Step 6: Handle program step
         if self.step == "program":
-            if "program" in result:
-                self.collected["program"] = self.normalize_program(result["program"])
+            if intent == "skip_field":
+                # Ensure the program is explicitly marked as "skipped" or None in collected
+                # so get_next_question doesn't try to ask it again.
+                self.collected["program"] = None # Mark program as intentionally skipped
                 self.step = "city"
+                next_question = self.get_next_question()
+                return f"No problem! We can discuss programs later. 😊\n{next_question}"
+            elif intent == "clarify":
+                return self.generate_dynamic_response("clarify", "program", user_input, self.collected)
+            elif intent == "invalid":
+                return self.generate_dynamic_response("invalid", "program", user_input, self.collected)
+            elif "program" in result:
+                self.collected["program"] = self.normalize_program(result["program"])
+                # After successfully getting the program, advance the step.
+                # If city was also provided, advance further.
                 if "city" in result:
                     self.collected["city"] = result["city"]
-                    self.step = "locality"
-                return self.get_next_question() or "Got it!"
-            elif intent == "invalid":
-                return "Could you let me know which program you're interested in? Pre-School, Full Day Care, or After School?"
+                    self.step = "locality" # Now we need locality if city is given
+                else:
+                    self.step = "city" # Move to ask for city if only program was given
 
-        # Step 7: Handle city step
+                next_question = self.get_next_question()
+                # If there's a next question, return it. Otherwise, return "Got it!"
+                # Ensure it transitions smoothly to the next required piece of info.
+                return next_question or "Got it! Which city are you looking for a center in?" # Added specific fallback for clarity
+
+        # Step 7: Handle city step (city is essential, cannot be skipped)
         if self.step == "city":
+            if intent == "skip_field":
+                # Changed this part to directly return the message without allowing a skip
+                return "Sorry, I can't proceed without knowing the city you're interested in. Which city are you looking for a center in?"
+            elif intent == "clarify":
+                # Ensure the 'clarify' message for city also states it's essential
+                return "Sorry, I didn't understand. Which city are you looking for a center in? Please provide a city name, as this is essential to find a center."
+            elif intent == "invalid":
+                # Ensure the 'invalid' message for city also states it's essential
+                return "Sorry, I didn't understand. Please tell me which city you're looking for a center in. This is a required field."
+            elif "city" in result:
+                city = result["city"]
+                city_centers = [c for c in self.CENTERS if c["city"].lower() == city.lower()]
+                if not city_centers:
+                    return f"Sorry, we don't have any centers in or near {city}.\nTry a different city like Noida, Delhi, or Lucknow?"
+                self.collected["city"] = city
+                original_step = self.step
+                self.step = "locality"
+                if "locality" in result:
+                    self.collected["locality"] = result["locality"]
+                    self.step = "recommend_center"
+                next_question = self.get_next_question()
+                return next_question or ""
+
+        # Step 8: Handle locality step
+        if self.step == "locality":
+            # FIXED: Check for city change in locality step
             if "city" in result:
                 city = result["city"]
                 city_centers = [c for c in self.CENTERS if c["city"].lower() == city.lower()]
                 if not city_centers:
                     return f"Sorry, we don't have any centers in or near {city}.\nTry a different city like Noida, Delhi, or Lucknow?"
                 self.collected["city"] = city
-                self.step = "locality"
-                if "locality" in result:
-                    self.collected["locality"] = result["locality"]
-                    self.step = "recommend_center"
-                return self.get_next_question() or ""
+                # Clear locality when city changes
+                if "locality" in self.collected:
+                    del self.collected["locality"]
+                next_question = self.get_next_question()
+                return next_question or ""
+            elif intent == "skip_field":
+                self.step = "recommend_center"
+                # Use city name as locality or find a default center
+                center = self.find_center(self.collected["city"], self.collected["city"])
+                if center:
+                    reply = f"No problem! Let me find a center in {self.collected['city']} for you.\n"
+                    reply += f"The nearest Footprints center is:\n{self.print_center(center)}"
+                    self.step = "schedule"
+                    if self.fact_injected < 1:
+                        reply += f"\n\nBy the way, did you know? {self.random_fact()}"
+                        self.fact_injected += 1
+                    reply += "\nWould you like to schedule a visit?"
+                    return reply
+                else:
+                    return f"I need to know which area in {self.collected['city']} you're looking for to find the best center for you."
+            elif intent == "clarify":
+                return self.generate_dynamic_response("clarify", "locality", user_input, self.collected)
             elif intent == "invalid":
-                return "Which city are you looking for a center in?"
-
-        # Step 8: Handle locality step
-        if self.step == "locality":
-            if "locality" in result:
+                return self.generate_dynamic_response("invalid", "locality", user_input, self.collected)
+            elif "locality" in result:
                 self.collected["locality"] = result["locality"]
                 self.step = "recommend_center"
-            elif intent == "invalid":
-                return f"Which locality in {self.collected.get('city', 'the city')}?"
 
         # Step 9: Recommend center
         if self.step == "recommend_center":
@@ -372,7 +526,6 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
                 if "locality" in result:
                     self.collected["locality"] = result["locality"]
                 center = self.find_center(self.collected["city"], self.collected["locality"])
-                self.step = "schedule"
                 reply = f"\nGot it! The updated nearest Footprints center is:\n{self.print_center(center)}"
                 if self.fact_injected < 2:
                     reply += f"\nBy the way, did you know? {self.random_fact()}"

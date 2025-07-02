@@ -100,12 +100,15 @@ Current step: {step}
 User input: "{user_input}"
 Collected so far: {collected}
 
-IMPORTANT: When we're asking for a specific field (name, program, city, locality), prioritize recognizing direct answers to that field over FAQ classification. Only classify as FAQ if the user is clearly asking a question with question words or phrases like "what is", "tell me about", "how much", etc.
-
-Instructions:
-- For name: Recognize if the input is a likely child's name. Must be a real, proper name (not random letters, gibberish, or casual words like "ay o", "hwy", etc.). If user explicitly refuses/says no/skip, classify as "skip_field". If input is unclear/ambiguous (like "ok", "sure", "fine") or not a real name, classify as "clarify"
-- For program: Classify as one of Pre-School, Full Day Care, After School (normalize typos/variants). If user refuses/skips, classify as "skip_field". IMPORTANT: "full day care", "daycare", "preschool", "after school" should be classified as provide_program, NOT as FAQ.
-- For city/locality: Normalize and expand abbreviations (e.g., "nfc" → "New Friends Colony"). City cannot be skipped (it's essential). If user wants to change city, classify as "provide_city".
+IMPORTANT:
+1. When we're asking for a specific field (name, program, city, locality), prioritize recognizing direct answers to that field over FAQ classification. Only classify as FAQ if the user is clearly asking a question with question words or phrases like "what is", "tell me about", "how much", etc.
+2. **ALWAYS extract ALL known relevant fields (name, program, city, locality) if they are present in the user's input, regardless of the current step or primary intent. This allows users to provide information for future steps early.**
+3. For name: Recognize if the input is a likely child's name. Must be a real, proper name (not random letters, gibberish, or casual words like "ay o", "hwy", etc.). If user explicitly refuses/says no/skip, classify as "skip_field". If input is unclear/ambiguous (like "ok", "sure", "fine") or not a real name, classify as "clarify"
+4. For program: Classify as one of Pre-School, Full Day Care, After School (normalize typos/variants). If user refuses/skips, classify as "skip_field". IMPORTANT: "full day care", "daycare", "preschool", "after school" should be classified as provide_program, NOT as FAQ.
+5. For city/locality: Normalize and expand abbreviations (e.g., "nfc" → "New Friends Colony"). City cannot be skipped (it's essential). If user wants to change city, classify as "provide_city".
+   - Example: "gurugram" should be normalized to "Gurgaon".
+   - Example: "sohna road gurugram" should extract city "Gurgaon" and locality "Sohna Road".
+   - Example: "I want center near sector 18 noida" should extract city "Noida" and locality "Sector 18".
 - If user asks a question (FAQ), recognize and extract the question - but only if they're clearly asking with question words
 - If user wants to change city/locality, extract new values
 - If user provides multiple fields, extract all
@@ -345,12 +348,15 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
 
     def handle_message(self, user_input):
         user_input = user_input.strip()
-        
+        child_name = self.collected.get("name", "your child") # Get child name early for responses
+
         # Step 1: Check if it's Footprints-related
         if not self.is_footprints_related(user_input):
             return "I'm here to assist only with Footprints-related queries. 😊"
 
-        # Step 2: Classify user intent first (this will handle both direct answers and FAQs)
+        # Step 2: Classify user intent and extract ALL possible entities
+        # The prompt should be general enough to extract all entities, regardless of current step
+        # Let's adjust gpt_intent_prompt to always extract all known fields if present.
         prompt = self.gpt_intent_prompt(self.step, user_input, self.collected)
         gpt_response = self.ask_gpt(prompt)
         print("DEBUG GPT RESPONSE:", gpt_response)
@@ -361,126 +367,110 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
 
         intent = result.get("intent", "invalid")
 
-        # Step 3: Handle FAQ at any step
+        # --- NEW LOGIC: Prioritize Global Intents (FAQ, End Conversation) ---
         if intent == "faq":
             topic = result.get("topic", "")
             return self.answer_faq(topic)
 
-        # Step 4: Handle end conversation
         if intent == "end_conversation":
             return self.generate_dynamic_response("end_conversation", self.step, user_input, self.collected)
 
-        # Step 5: Handle name step
+        # --- NEW LOGIC: Extract all provided fields immediately, regardless of current step ---
+        # This allows users to "jump ahead" and provide info like city/program early
+        if "name" in result and result["name"] and self.collected.get("name") is None:
+            self.collected["name"] = result["name"]
+        if "program" in result and result["program"] and self.collected.get("program") is None:
+            self.collected["program"] = self.normalize_program(result["program"])
+        if "city" in result and result["city"] and self.collected.get("city") is None:
+            self.collected["city"] = result["city"]
+        if "locality" in result and result["locality"] and self.collected.get("locality") is None:
+            # If locality is provided but city isn't, attempt to use city from collected or prior knowledge
+            if self.collected.get("city") is None:
+                # If GPT provides locality but not city, it's a prompt issue or a difficult inference.
+                # For now, if city is missing, we'll still prompt for it.
+                pass
+            self.collected["locality"] = result["locality"]
+
+        # --- NEW LOGIC: Determine the logical next step based on ALL collected data ---
+        # This is where the core flow control happens after entity extraction.
+        # This will ensure we prioritize completing required fields.
+
+        # If we have city and locality, we can go straight to recommending a center
+        if self.collected.get("city") and self.collected.get("locality"):
+            self.step = "recommend_center"
+        elif self.collected.get("city"):
+            self.step = "locality" # We have city, need locality
+        elif self.collected.get("program"):
+            self.step = "city" # We have program, need city
+        elif self.collected.get("name") or self.name_attempts >= 2: # Name is either provided or skipped
+            self.step = "program" # We have name (or skipped it), need program
+        else: # Default to name if nothing is collected or name wasn't skipped yet
+            self.step = "name"
+        
+
+        # --- Handle specific step logic based on the *newly determined* self.step ---
+
+        # Handle name step
         if self.step == "name":
             if intent == "skip_field":
                 self.name_attempts += 1
-                if self.name_attempts >= 2:  # After 2 attempts, let them skip
-                    self.step = "program"
-                    next_question = self.get_next_question()
-                    return f"That's perfectly fine! We can continue without the name. 😊\n{next_question}"
+                if self.name_attempts >= 2:
+                    self.collected["name"] = None
+                    self.step = "program" # Advance after exhausting name attempts
+                    return f"That's perfectly fine! We can continue without the name. 😊\n{self.get_next_question()}"
                 else:
                     return self.generate_dynamic_response("skip_field", "name", user_input, self.collected)
-            elif intent == "clarify":
-                return self.generate_dynamic_response("clarify", "name", user_input, self.collected)
-            elif intent == "invalid":
+            elif intent in ["clarify", "invalid"]: # If name is current step and input is bad
                 self.name_attempts += 1
                 if self.name_attempts >= 2:
+                    self.collected["name"] = None
                     self.step = "program"
-                    next_question = self.get_next_question()
-                    return f"No worries! We can continue without the name. 😊\n{next_question}"
+                    return f"No worries! We can continue without the name. 😊\n{self.get_next_question()}"
                 else:
-                    return self.generate_dynamic_response("invalid", "name", user_input, self.collected)
-            elif "name" in result:
-                self.collected["name"] = result["name"]
-                original_step = self.step
-                self.step = "program"
-                # Check if they provided program too
-                if "program" in result:
-                    self.collected["program"] = self.normalize_program(result["program"])
-                    self.step = "city"
-                if "city" in result:
-                    self.collected["city"] = result["city"]
-                    self.step = "locality" if "program" in self.collected else "program"
-                
-                child_name = self.collected["name"]
-                next_question = self.get_next_question()
-                return f"Thanks {child_name}! {next_question or ''}"
+                    return self.generate_dynamic_response(intent, "name", user_input, self.collected)
+            elif self.collected.get("name"): # Name was just provided or already collected
+                # If name was just provided, and step was name, we move to program.
+                # If other fields were also given, the self.step calculation above would handle it.
+                return f"Thanks {self.collected['name']}! {self.get_next_question() or ''}"
+            
+            # Fallback for name step if input didn't fit categories above
+            return self.get_next_question()
 
-        # Step 6: Handle program step
-        if self.step == "program":
+        # Handle program step
+        elif self.step == "program":
             if intent == "skip_field":
-                # Ensure the program is explicitly marked as "skipped" or None in collected
-                # so get_next_question doesn't try to ask it again.
-                self.collected["program"] = None # Mark program as intentionally skipped
-                self.step = "city"
-                next_question = self.get_next_question()
-                return f"No problem! We can discuss programs later. 😊\n{next_question}"
-            elif intent == "clarify":
-                return self.generate_dynamic_response("clarify", "program", user_input, self.collected)
-            elif intent == "invalid":
-                return self.generate_dynamic_response("invalid", "program", user_input, self.collected)
-            elif "program" in result:
-                self.collected["program"] = self.normalize_program(result["program"])
-                # After successfully getting the program, advance the step.
-                # If city was also provided, advance further.
-                if "city" in result:
-                    self.collected["city"] = result["city"]
-                    self.step = "locality" # Now we need locality if city is given
-                else:
-                    self.step = "city" # Move to ask for city if only program was given
+                self.collected["program"] = None # Mark as skipped
+                self.step = "city" # Move to city
+                return f"No problem! We can discuss programs later. 😊\n{self.get_next_question()}"
+            elif self.collected.get("program"): # Program just provided or already collected
+                # The step would have already advanced by the global logic if city/locality also provided
+                return self.get_next_question() or f"Got it! Which city are you looking for a center in?"
+            elif intent in ["clarify", "invalid"]:
+                return self.generate_dynamic_response(intent, "program", user_input, self.collected)
+            
+            # Fallback for program step if input didn't fit categories above
+            return self.get_next_question()
 
-                next_question = self.get_next_question()
-                # If there's a next question, return it. Otherwise, return "Got it!"
-                # Ensure it transitions smoothly to the next required piece of info.
-                return next_question or "Got it! Which city are you looking for a center in?" # Added specific fallback for clarity
-
-        # Step 7: Handle city step (city is essential, cannot be skipped)
-        if self.step == "city":
-            if intent == "skip_field":
-                # Changed this part to directly return the message without allowing a skip
+        # Handle city step (MANDATORY)
+        elif self.step == "city":
+            if intent == "skip_field" or intent in ["clarify", "invalid"]: # User tried to skip or gave invalid input
                 return "Sorry, I can't proceed without knowing the city you're interested in. Which city are you looking for a center in?"
-            elif intent == "clarify":
-                # Ensure the 'clarify' message for city also states it's essential
-                return "Sorry, I didn't understand. Which city are you looking for a center in? Please provide a city name, as this is essential to find a center."
-            elif intent == "invalid":
-                # Ensure the 'invalid' message for city also states it's essential
-                return "Sorry, I didn't understand. Please tell me which city you're looking for a center in. This is a required field."
-            elif "city" in result:
-                city = result["city"]
-                city_centers = [c for c in self.CENTERS if c["city"].lower() == city.lower()]
-                if not city_centers:
-                    return f"Sorry, we don't have any centers in or near {city}.\nTry a different city like Noida, Delhi, or Lucknow?"
-                self.collected["city"] = city
-                original_step = self.step
-                self.step = "locality"
-                if "locality" in result:
-                    self.collected["locality"] = result["locality"]
-                    self.step = "recommend_center"
-                next_question = self.get_next_question()
-                return next_question or ""
+            elif self.collected.get("city"): # City just provided or already collected
+                # If locality also provided, step would be 'locality' or 'recommend_center' by global logic
+                return self.get_next_question() or "" # Will ask for locality if needed
+            
+            # Fallback for city step
+            return self.get_next_question()
 
-        # Step 8: Handle locality step
-        if self.step == "locality":
-            # FIXED: Check for city change in locality step
-            if "city" in result:
-                city = result["city"]
-                city_centers = [c for c in self.CENTERS if c["city"].lower() == city.lower()]
-                if not city_centers:
-                    return f"Sorry, we don't have any centers in or near {city}.\nTry a different city like Noida, Delhi, or Lucknow?"
-                self.collected["city"] = city
-                # Clear locality when city changes
-                if "locality" in self.collected:
-                    del self.collected["locality"]
-                next_question = self.get_next_question()
-                return next_question or ""
-            elif intent == "skip_field":
-                self.step = "recommend_center"
-                # Use city name as locality or find a default center
-                center = self.find_center(self.collected["city"], self.collected["city"])
+        # Handle locality step
+        elif self.step == "locality":
+            if intent == "skip_field":
+                # If locality is skipped, try to find a general center in the city
+                center = self.find_center(self.collected["city"], self.collected["city"]) # Use city name as a broad locality hint
                 if center:
+                    self.step = "schedule" # Move to scheduling if center found
                     reply = f"No problem! Let me find a center in {self.collected['city']} for you.\n"
                     reply += f"The nearest Footprints center is:\n{self.print_center(center)}"
-                    self.step = "schedule"
                     if self.fact_injected < 1:
                         reply += f"\n\nBy the way, did you know? {self.random_fact()}"
                         self.fact_injected += 1
@@ -488,17 +478,18 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
                     return reply
                 else:
                     return f"I need to know which area in {self.collected['city']} you're looking for to find the best center for you."
-            elif intent == "clarify":
-                return self.generate_dynamic_response("clarify", "locality", user_input, self.collected)
-            elif intent == "invalid":
-                return self.generate_dynamic_response("invalid", "locality", user_input, self.collected)
-            elif "locality" in result:
-                self.collected["locality"] = result["locality"]
-                self.step = "recommend_center"
+            elif self.collected.get("locality"): # Locality just provided or already collected
+                self.step = "recommend_center" # Move to recommendation
+                return self.handle_message(user_input) # Re-process to hit recommend_center block
+            elif intent in ["clarify", "invalid"]:
+                return self.generate_dynamic_response(intent, "locality", user_input, self.collected)
+            
+            # Fallback for locality step
+            return self.get_next_question()
 
-        # Step 9: Recommend center
-        if self.step == "recommend_center":
-            center = self.find_center(self.collected["city"], self.collected["locality"])
+        # Handle recommend center step
+        elif self.step == "recommend_center":
+            center = self.find_center(self.collected["city"], self.collected.get("locality", self.collected["city"]))
             if not center:
                 return f"Sorry, no centers found in {self.collected['city']}."
             self.step = "schedule"
@@ -509,8 +500,8 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
             reply += "\nWould you like to schedule a visit, or change city/locality?"
             return reply
 
-        # Step 10: Handle scheduling
-        if self.step == "schedule":
+        # Handle scheduling (final step)
+        elif self.step == "schedule":
             if intent in ["schedule_visit", "yes"]:
                 reply = (
                     "Your visit is scheduled! You can visit anytime Monday to Friday, 9:00 AM to 6:30 PM.\n"
@@ -520,24 +511,20 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
                     reply += f"\nBy the way, did you know? {self.random_fact()}"
                     self.fact_injected += 1
                 return reply
-            elif "city" in result or "locality" in result:
-                if "city" in result:
-                    self.collected["city"] = result["city"]
-                if "locality" in result:
-                    self.collected["locality"] = result["locality"]
-                center = self.find_center(self.collected["city"], self.collected["locality"])
-                reply = f"\nGot it! The updated nearest Footprints center is:\n{self.print_center(center)}"
-                if self.fact_injected < 2:
-                    reply += f"\nBy the way, did you know? {self.random_fact()}"
-                    self.fact_injected += 1
-                reply += "\nWould you like to schedule a visit, or change city/locality?"
-                return reply
-            else:
-                return "Would you like to schedule a visit or change city/locality?"
+            else: # If user provides more info or asks something else at this stage
+                # We already extracted city/locality globally, so check if they changed it
+                if "city" in result or "locality" in result: # City/locality might have been updated by global extraction
+                    if self.collected.get("city"):
+                        # Re-run handle_message to re-evaluate step and find new center
+                        self.step = "recommend_center" # Force it back to recommend
+                        return self.handle_message(user_input)
+                
+                # If nothing specific and not a clear schedule confirmation
+                return "Would you like to schedule a visit, or change city/locality?"
 
-        # Default fallback
-        next_q = self.get_next_question()
-        return next_q if next_q else "How else can I help you with Footprints?"
+
+        # Default fallback (should ideally not be reached if flow is well-defined)
+        return "How else can I help you with Footprints?"
 
 
 # Constants

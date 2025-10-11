@@ -8,4 +8,4 @@ while True:
     response = bot.handle_message(user_input)
     print(response)
     if "great day" in response.lower() or "bye" in user_input.lower():
-        break
+        break 

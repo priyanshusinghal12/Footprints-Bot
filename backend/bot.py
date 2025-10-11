@@ -2,8 +2,21 @@ import os
 import json
 import re
 import random
+from difflib import SequenceMatcher
 from dotenv import load_dotenv
 from openai import OpenAI
+
+# Profanity word list - comprehensive but not exhaustive
+PROFANITY_LIST = [
+    'fuck', 'shit', 'ass', 'bitch', 'bastard', 'damn', 'hell', 'crap',
+    'piss', 'dick', 'cock', 'pussy', 'asshole', 'motherfucker', 'fck',
+    'fuk', 'sht', 'btch', 'wtf', 'stfu', 'bullshit', 'cunt', 'whore',
+    'slut', 'fag', 'retard', 'stupid', 'idiot', 'dumb', 'moron', 
+    'jackass', 'douche', 'jerk', 'bloody', 'bugger', 'bollocks',
+    # Add common variations and leetspeak
+    'f*ck', 'f**k', 'sh*t', 'b*tch', 'a$$', 'a**', '@ss', '@sshole',
+    'fuсk', 'sh!t', 'b!tch',  # Unicode lookalikes and special chars
+]
 
 class FootprintsBot:
     def __init__(self):
@@ -49,6 +62,22 @@ class FootprintsBot:
             return match.group(1).strip()
         return response.strip()
 
+    def contains_profanity(self, text):
+        """Check if text contains profanity or inappropriate language"""
+        text_lower = text.lower()
+        # Normalize text to catch variations (remove spaces, special chars between letters)
+        normalized = re.sub(r'[^a-z]', '', text_lower)
+        
+        for word in PROFANITY_LIST:
+            # Check exact word boundaries
+            word_pattern = r'\b' + re.escape(word) + r'\b'
+            if re.search(word_pattern, text_lower):
+                return True
+            # Check in normalized text (catches "f u c k" as "fuck")
+            if word in normalized:
+                return True
+        return False
+    
     def is_footprints_related(self, user_input):
         """Check if the user input is related to Footprints or general queries we should handle"""
         
@@ -284,20 +313,93 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
     def random_fact(self):
         return random.choice(FOOTPRINTS_FACTS)
 
+    def similarity_score(self, str1, str2):
+        """Calculate similarity between two strings (0-1)"""
+        return SequenceMatcher(None, str1.lower(), str2.lower()).ratio()
+    
+    def extract_sector_number(self, text):
+        """Extract sector number from text like 'Sector 45' or 'sector 50 noida'"""
+        match = re.search(r'sector\s*(\d+)', text.lower())
+        return int(match.group(1)) if match else None
+    
+    def normalize_locality(self, locality):
+        """Normalize locality for better matching"""
+        # Remove common suffixes and normalize
+        locality = locality.strip()
+        locality = re.sub(r',?\s*(noida|delhi|gurgaon|bangalore|mumbai|pune)$', '', locality, flags=re.IGNORECASE)
+        return locality.strip()
+    
     def find_center(self, city, locality):
-        for center in self.CENTERS:
-            if center["city"].lower() == city.lower() and center["locality"].lower() == locality.lower():
-                return center
+        """Smart center finder with exact, fuzzy, and numeric sector matching"""
         centers_in_city = [c for c in self.CENTERS if c["city"].lower() == city.lower()]
         if not centers_in_city:
             return None
+        
+        locality_normalized = self.normalize_locality(locality)
+        
+        # 1. Try EXACT match first
+        for center in centers_in_city:
+            center_locality_normalized = self.normalize_locality(center["locality"])
+            if center_locality_normalized.lower() == locality_normalized.lower():
+                print(f"DEBUG: Found EXACT match: {center['locality']}")
+                return center
+        
+        # 2. Try PARTIAL match (e.g., "Sector 45" in "Sector 45, Noida")
+        for center in centers_in_city:
+            center_locality_lower = center["locality"].lower()
+            locality_lower = locality_normalized.lower()
+            if locality_lower in center_locality_lower or center_locality_lower in locality_lower:
+                print(f"DEBUG: Found PARTIAL match: {center['locality']} for query '{locality}'")
+                return center
+        
+        # 3. Try SECTOR NUMBER matching (for numeric sectors)
+        requested_sector = self.extract_sector_number(locality)
+        if requested_sector:
+            sector_centers = []
+            for center in centers_in_city:
+                center_sector = self.extract_sector_number(center["locality"])
+                if center_sector:
+                    sector_centers.append((center, center_sector))
+            
+            if sector_centers:
+                # Find closest sector by number
+                closest = min(sector_centers, key=lambda x: abs(x[1] - requested_sector))
+                print(f"DEBUG: Requested Sector {requested_sector}, found closest Sector {closest[1]}: {closest[0]['locality']}")
+                return closest[0]
+        
+        # 4. Try FUZZY matching (similarity score > 0.6)
+        best_match = None
+        best_score = 0.6  # Minimum threshold
+        for center in centers_in_city:
+            score = self.similarity_score(locality_normalized, self.normalize_locality(center["locality"]))
+            if score > best_score:
+                best_score = score
+                best_match = center
+        
+        if best_match:
+            print(f"DEBUG: Found FUZZY match (score {best_score:.2f}): {best_match['locality']} for query '{locality}'")
+            return best_match
+        
+        # 5. Last resort: Use GPT for geographic/semantic matching
         prompt = self.gpt_recommend_center_prompt(city, locality, centers_in_city)
         gpt_response = self.ask_gpt(prompt)
-        print("DEBUG GPT RECOMMEND RESPONSE:", gpt_response)
+        print("DEBUG: Using GPT recommendation:", gpt_response)
+        
+        # Try to find the GPT recommended locality
         for center in centers_in_city:
             if gpt_response.strip().lower() in center["locality"].lower():
+                print(f"DEBUG: GPT matched to: {center['locality']}")
                 return center
+        
+        # Ultimate fallback: return first center in city
+        print(f"DEBUG: No good match found, returning first center in {city}")
         return centers_in_city[0]
+    
+    def get_available_localities(self, city, limit=5):
+        """Get list of available localities in a city"""
+        centers = [c for c in self.CENTERS if c["city"].lower() == city.lower()]
+        localities = [c["locality"] for c in centers[:limit]]
+        return localities
 
     def print_center(self, center):
         return f"{center['name']} at {center['address']}, {center['city']} ({center['locality']})"
@@ -350,9 +452,13 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
         user_input = user_input.strip()
         child_name = self.collected.get("name", "your child") # Get child name early for responses
 
+        # Step 0: Check for profanity FIRST
+        if self.contains_profanity(user_input):
+            return "Please stay respectful and keep our conversation focused on Footprints Preschool. I'm here to help with admissions, programs, and any questions you have! 😊"
+
         # Step 1: Check if it's Footprints-related
         if not self.is_footprints_related(user_input):
-            return "I'm here to assist only with Footprints-related queries. 😊"
+            return "I'm here to assist only with Footprints-related queries. How can I help you with preschool admissions, programs, or center information? 😊"
 
         # Step 2: Classify user intent and extract ALL possible entities
         # The prompt should be general enough to extract all entities, regardless of current step
@@ -377,19 +483,26 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
 
         # --- NEW LOGIC: Extract all provided fields immediately, regardless of current step ---
         # This allows users to "jump ahead" and provide info like city/program early
+        # For name and program, only set if not already set (these are early flow fields)
         if "name" in result and result["name"] and self.collected.get("name") is None:
             self.collected["name"] = result["name"]
         if "program" in result and result["program"] and self.collected.get("program") is None:
             self.collected["program"] = self.normalize_program(result["program"])
-        if "city" in result and result["city"] and self.collected.get("city") is None:
+        
+        # For city and locality, ALWAYS update if provided (users can change these anytime)
+        if "city" in result and result["city"]:
+            old_city = self.collected.get("city")
             self.collected["city"] = result["city"]
-        if "locality" in result and result["locality"] and self.collected.get("locality") is None:
-            # If locality is provided but city isn't, attempt to use city from collected or prior knowledge
-            if self.collected.get("city") is None:
-                # If GPT provides locality but not city, it's a prompt issue or a difficult inference.
-                # For now, if city is missing, we'll still prompt for it.
-                pass
+            if old_city and old_city != result["city"]:
+                print(f"DEBUG: City changed from '{old_city}' to '{result['city']}'")
+        if "locality" in result and result["locality"]:
+            old_locality = self.collected.get("locality")
             self.collected["locality"] = result["locality"]
+            if old_locality and old_locality != result["locality"]:
+                print(f"DEBUG: Locality changed from '{old_locality}' to '{result['locality']}'")
+            else:
+                print(f"DEBUG: Locality set to '{result['locality']}'")
+
 
         # --- NEW LOGIC: Determine the logical next step based on ALL collected data ---
         # This is where the core flow control happens after entity extraction.
@@ -493,6 +606,10 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
             if not center:
                 return f"Sorry, no centers found in {self.collected['city']}."
             
+            # Store the recommended center for comparison
+            if not hasattr(self, 'last_recommended_center'):
+                self.last_recommended_center = None
+            
             self.step = "schedule"
 
             # Shortcut: If user already said "schedule a visit" now, confirm directly
@@ -506,12 +623,22 @@ Based on your knowledge of {city}'s geography, which center is closest to or mos
                     self.fact_injected += 1
                 return reply
 
-            # Otherwise, show the recommended center
-            reply = f"Great! The nearest Footprints center is:\n{self.print_center(center)}"
+            # Check if this is a locality change
+            is_locality_change = (self.last_recommended_center is not None and 
+                                 self.last_recommended_center != center["locality"])
+            
+            self.last_recommended_center = center["locality"]
+            
+            # Build response
+            if is_locality_change:
+                reply = f"Sure! Switching to {center['locality']}.\n\nThe Footprints center here is:\n{self.print_center(center)}"
+            else:
+                reply = f"Great! The nearest Footprints center is:\n{self.print_center(center)}"
+            
             if self.fact_injected < 1:
                 reply += f"\n\nBy the way, did you know? {self.random_fact()}"
                 self.fact_injected += 1
-            reply += "\nWould you like to schedule a visit, or change city/locality?"
+            reply += "\n\nWould you like to schedule a visit, or change city/locality?"
             return reply
 
         # Handle scheduling (final step)

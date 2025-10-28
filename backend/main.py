@@ -5,7 +5,9 @@ from bot import FootprintsBot
 from db import save_message
 
 app = FastAPI()
-bot = FootprintsBot()
+
+# Dictionary to store bot instances per session
+bot_sessions = {}
 
 # CORS setup for local dev (Vite), Vercel (frontend), and Render (backend)
 app.add_middleware(
@@ -29,6 +31,12 @@ async def chat_endpoint(request: ChatRequest):
     try:
         user_input = request.message
         session_id = request.session_id
+
+        # Get or create bot instance for this session
+        if session_id not in bot_sessions:
+            bot_sessions[session_id] = FootprintsBot()
+        
+        bot = bot_sessions[session_id]
 
         save_message("user", user_input, session_id)
         reply = bot.handle_message(user_input)

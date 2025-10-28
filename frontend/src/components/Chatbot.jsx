@@ -38,12 +38,21 @@ const ChatBot = () => {
 	const [isListening, setIsListening] = useState(false);
 	const [inputDisabled, setInputDisabled] = useState(false);
 	const messagesEndRef = useRef(null);
+	const chatContainerRef = useRef(null);
 	const emojiRef = useRef();
 	const recognitionRef = useRef(null);
 
+	// Autoscroll when messages change
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 	}, [messages]);
+
+	// Autoscroll when bot starts/stops typing
+	useEffect(() => {
+		if (isBotTyping) {
+			messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+		}
+	}, [isBotTyping]);
 
 	useEffect(() => {
 		const handleClickOutside = (event) => {
@@ -154,8 +163,8 @@ const ChatBot = () => {
 				</button>
 			</div>
 
-			{/* Chat Window */}
-			<div className="flex-1 overflow-y-auto px-4 py-5 bg-gray-50 space-y-4">
+		{/* Chat Window */}
+		<div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-5 bg-gray-50 space-y-4">
 				{messages.map((msg, idx) => (
 					<motion.div
 						key={idx}

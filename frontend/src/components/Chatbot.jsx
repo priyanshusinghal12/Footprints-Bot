@@ -96,11 +96,19 @@ const ChatBot = () => {
 	};
 
 	const clearChat = () => {
+		// Clear chat history
 		localStorage.removeItem("chat-history");
+		
+		// Generate new session ID to get a fresh bot instance
+		const newId = crypto.randomUUID();
+		localStorage.setItem("session-id", newId);
+		sessionId.current = newId;
+		
+		// Reset messages
 		setMessages([
 			{
 				from: "bot",
-				text: "Hi! 👋 Welcome to Footprints Preschool. I’m Arjun, your assistant. May I know your child’s name? 👶",
+				text: "Hi! 👋 Welcome to Footprints Preschool. I'm Arjun, your assistant. May I know your child's name? 👶",
 			},
 		]);
 	};
